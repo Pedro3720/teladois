@@ -28,7 +28,7 @@ jobs:
             -derivedDataPath ../build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+            CODE_SIGN_IDENTITY="" \n            LM_SKIP_METADATA_EXTRACTION=YES
       - name: Empacotar .ipa
         run: |
           mkdir -p Payload
