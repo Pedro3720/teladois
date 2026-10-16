@@ -21,6 +21,8 @@ struct ClockPageView: View {
                     .foregroundStyle(Theme.clock)
                     .lineLimit(1)
                     .minimumScaleFactor(0.3)
+                    // O protótipo estica o relógio na vertical (1,5×); sem isso a fonte, limitada pela largura, fica baixa.
+                    .scaleEffect(x: 1, y: 1.5)
                     // Identificador no próprio Text (antes do .frame) para o teste medir o texto, não a coluna.
                     .accessibilityIdentifier("clock")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -39,13 +41,14 @@ struct ClockPageView: View {
                         }
                         .font(.system(size: height * 0.095, weight: .semibold, design: .rounded))
                         .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                         Spacer(minLength: 0)
                         BatteryRingView(level: batteryLevel, isCharging: isCharging)
                             .frame(width: height * 0.22, height: height * 0.22)
                     }
                     Spacer(minLength: 0)
                 }
-                .frame(width: width * 0.3)
+                .frame(width: width * 0.34)
             }
             .padding(.leading, max(safeArea.leading + 12, Theme.sideMargin))
             .padding(.trailing, max(safeArea.trailing + 12, Theme.rightClearance))
