@@ -7,13 +7,19 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.1.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "0.2.0"
     CURRENT_PROJECT_VERSION: "1"
+packages:
+  TelaDoisCore:
+    path: Packages/TelaDoisCore
 targets:
   TelaDois:
     type: application
     platform: iOS
     sources: [TelaDois]
+    dependencies:
+      - package: TelaDoisCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pedrovviana.teladois
@@ -22,17 +28,10 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UIRequiresFullScreen: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIStatusBarHidden: YES
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "A temperatura do Modo Descanso usa a sua localização aproximada."
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1"
-  TelaDoisTests:
-    type: bundle.unit-test
-    platform: iOS
-    sources: [TelaDoisTests]
-    dependencies:
-      - target: TelaDois
-    settings:
-      base:
-        GENERATE_INFOPLIST_FILE: YES
   TelaDoisUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -50,5 +49,4 @@ schemes:
         TelaDois: all
     test:
       targets:
-        - TelaDoisTests
         - TelaDoisUITests
