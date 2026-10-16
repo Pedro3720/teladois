@@ -27,7 +27,8 @@ jobs:
             -scheme TelaDois \
             -destination "id=${{ steps.sim.outputs.udid }},arch=arm64" \
             -resultBundlePath ../TestResults.xcresult \
-            CODE_SIGNING_ALLOWED=NO \n            LM_SKIP_METADATA_EXTRACTION=YES
+            CODE_SIGNING_ALLOWED=NO \
+            LM_SKIP_METADATA_EXTRACTION=YES
       - name: Exportar prints
         if: always()
         run: |
