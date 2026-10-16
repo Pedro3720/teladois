@@ -63,4 +63,17 @@ final class RestScreenUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(battery.minY - window.minY, 24, "bateria colada no topo")
         XCTAssertGreaterThan(clock.height, window.height * 0.5, "relógio deve ocupar boa parte da altura")
     }
+
+    func testDimsAfterTimeoutAndOneTapWakes() {
+        let app = launch(dimSeconds: 4)
+        let overlay = app.buttons["dim-overlay"]
+        XCTAssertTrue(overlay.waitForExistence(timeout: 10), "tela deveria escurecer após 4 s sem toque")
+        attachScreenshot("02-escurecido")
+
+        overlay.tap()
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: overlay)
+        wait(for: [gone], timeout: 3)
+        XCTAssertTrue(app.staticTexts["clock"].isHittable, "relógio deveria voltar a aparecer")
+        attachScreenshot("03-acordado")
+    }
 }
