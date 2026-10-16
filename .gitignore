@@ -25,6 +25,21 @@ node_modules/
 # Prints e logs do Playwright MCP (verificação manual)
 /.playwright-mcp/
 
+# Segredos e credenciais (nunca versionar)
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.cer
+*.mobileprovision
+*.keystore
+*.jks
+.claude/settings.local.json
+
+# Build local do pacote Swift (se alguém rodar swift no Mac)
+ios/Packages/*/.build/
+
 # SO / editores
 .DS_Store
 Thumbs.db
