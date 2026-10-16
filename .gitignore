@@ -1,0 +1,25 @@
+# Xcode (projeto é gerado pelo XcodeGen no CI)
+ios/*.xcodeproj/
+ios/*.xcworkspace/
+build/
+DerivedData/
+*.xcresult
+*.ipa
+Payload/
+screenshots/
+
+# .NET
+windows/**/bin/
+windows/**/obj/
+*.user
+
+# Node / Playwright (protótipo)
+node_modules/
+playwright-report/
+test-results/
+
+# SO / editores
+.DS_Store
+Thumbs.db
+.vs/
+.vscode/
