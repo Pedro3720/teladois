@@ -1,0 +1,49 @@
+name: ios-test
+on:
+  push:
+    branches: [main]
+    paths: ["ios/**", ".github/**"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar XcodeGen
+        run: brew install xcodegen
+      - name: Gerar projeto
+        working-directory: ios
+        run: xcodegen generate
+      - name: Escolher simulador
+        id: sim
+        run: echo "udid=$(bash .github/scripts/pick-simulator.sh)" >> "$GITHUB_OUTPUT"
+      - name: Rodar testes
+        working-directory: ios
+        run: |
+          xcodebuild test \
+            -project TelaDois.xcodeproj \
+            -scheme TelaDois \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -resultBundlePath ../TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Exportar prints
+        if: always()
+        run: |
+          mkdir -p screenshots
+          if [ -d TestResults.xcresult ]; then
+            xcrun xcresulttool export attachments --path TestResults.xcresult --output-path screenshots || true
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: screenshots
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: TestResults.xcresult
+          if-no-files-found: ignore
