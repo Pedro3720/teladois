@@ -146,7 +146,7 @@ Padrões da v1: 2556×1179, 60 fps (o PC pode reduzir para 30 fps se a latência
 | Visual antes do Swift | Protótipo HTML em viewport 2556×1179 (escala 1/3 aceitável) verificado com Playwright |
 | PC | xUnit: protocolo, mensagens plist do usbmuxd, estados do `DisplayManager` |
 | Ponta a ponta | Manual com o iPhone real; latência medida por `PING` exibida no ícone de bandeja. Meta: < 100 ms a 60 fps |
-| Segurança | REA inspeciona cada `.ipa` (Info.plist, permissões) e o binário do Virtual Display Driver antes da instalação |
+| Segurança | Cada `.ipa` é inspecionado com Python isolado (Info.plist, cabeçalho Mach-O, ausência de assinatura) — as ferramentas Apple do REA não rodam no Windows. O REA inspeciona o binário do Virtual Display Driver antes da instalação |
 
 ## 8. Etapas de entrega
 
@@ -165,7 +165,7 @@ Cada etapa termina em algo funcionando e verificado.
 ## 9. Ferramentas do Claude por etapa
 
 - **Todas as etapas:** `superpowers:writing-plans`, `superpowers:subagent-driven-development`, `superpowers:test-driven-development`, `superpowers:systematic-debugging`, `superpowers:verification-before-completion`, `superpowers:requesting-code-review`, `agent-skills:incremental-implementation`, `agent-skills:documentation-and-adrs`, `agent-skills:git-workflow-and-versioning`.
-- **Etapa 0:** `init`, `agent-skills:constraints`, `agent-skills:ci-cd-and-automation`, REA (inspeção do `.ipa`).
+- **Etapa 0:** `init`, `agent-skills:constraints`, `agent-skills:ci-cd-and-automation`, inspeção do `.ipa` com Python isolado (o REA não inspeciona artefatos Apple no Windows).
 - **Etapa 1:** Canva (ícone/artes), `ui-ux-pro-max`, `ui-ux-pro-max:design-system`, `ui-ux-pro-max:design`, `frontend-design`, Artifacts (mockups), Playwright (protótipo).
 - **Etapas 2–3:** `agent-skills:source-driven-development`, `agent-skills:debugging-and-error-recovery`, XCUITest via CI.
 - **Etapas 4–5:** `agent-skills:api-and-interface-design`, `agent-skills:doubt-driven-development`, `agent-skills:performance-optimization`, `agent-skills:observability-and-instrumentation`, `agent-skills:security-and-hardening`, agente `security-auditor`, REA (driver e usbmuxd).
