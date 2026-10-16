@@ -45,7 +45,7 @@ Um app de iPhone com duas funções:
 
 ### 3.1 Transporte USB
 
-- O Windows tem o serviço **Apple Mobile Device Service** (vem com o app "Dispositivos Apple" ou iTunes), que expõe o **usbmuxd** em `127.0.0.1:27015`.
+- O Windows tem o serviço **Apple Mobile Device Service** (vem com o **iTunes versão web**, do site da Apple, não o da Microsoft Store), que expõe o **usbmuxd** em `127.0.0.1:27015`.
 - O PC envia mensagens plist `Listen` (para receber eventos `Attached`/`Detached`) e `Connect` (para abrir um túnel TCP até uma porta do iPhone).
 - O app do iPhone escuta numa porta TCP fixa (**7100**) com `NWListener` (Network.framework), apenas enquanto está em primeiro plano.
 
@@ -122,7 +122,7 @@ Padrões da v1: 2556×1179, 60 fps (o PC pode reduzir para 30 fps se a latência
 | Erro de decodificação no iPhone | Descarta até o próximo keyframe e envia `KEYFRAME_REQ` |
 | Spotify não instalado / sem login / desconectado | Mostra "Conectar Spotify"; 1 toque tenta reconectar |
 | Localização negada ou Open-Meteo fora do ar | Temperatura escondida; o resto funciona. Atualização a cada 30 min |
-| Apple Mobile Device Service ausente | Ícone de bandeja mostra o aviso com o link para instalar "Dispositivos Apple" |
+| Apple Mobile Device Service ausente | Ícone de bandeja mostra o aviso com a instrução de instalar o **iTunes versão web** (do site da Apple, não o da Microsoft Store) |
 
 ## 6. Estrutura do repositório
 
@@ -174,6 +174,6 @@ Cada etapa termina em algo funcionando e verificado.
 ## 10. Pré-requisitos do usuário
 
 - Conta no GitHub (etapa 0).
-- App **Dispositivos Apple** (ou iTunes) instalado no Windows (etapa 0 — necessário para o Sideloadly e para o usbmuxd).
+- **iTunes e iCloud versão web** (instaladores do site da Apple, não da Microsoft Store) instalados no Windows (etapa 0 — necessário para o Sideloadly e para o usbmuxd).
 - **Sideloadly** instalado; Apple ID grátis; Modo Desenvolvedor ativo no iPhone (etapa 0).
 - Cadastro grátis no **Spotify Developer** com um app criado (Client ID + Redirect URI) (etapa 3).
