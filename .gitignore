@@ -1,12 +1,15 @@
 # Xcode (projeto é gerado pelo XcodeGen no CI)
 ios/*.xcodeproj/
 ios/*.xcworkspace/
-build/
-DerivedData/
+/build/
+/DerivedData/
 *.xcresult
+/TestResults.xcresult
 *.ipa
-Payload/
-screenshots/
+/Payload/
+/screenshots/
+# Pasta local onde o Claude entrega o .ipa ao usuário
+/builds/
 
 # .NET
 windows/**/bin/
@@ -15,8 +18,9 @@ windows/**/obj/
 
 # Node / Playwright (protótipo)
 node_modules/
-playwright-report/
-test-results/
+/prototype/node_modules/
+/prototype/test-results/
+/prototype/playwright-report/
 
 # SO / editores
 .DS_Store
