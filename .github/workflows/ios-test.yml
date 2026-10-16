@@ -2,8 +2,22 @@ name: ios-test
 on:
   push:
     branches: [main]
-    paths: ["ios/**", ".github/**"]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-test.yml"
+      - ".github/scripts/**"
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Toolchain fixa (default atual do macos-15): Xcode 16.4 / iOS SDK 18.5.
+  DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
 
 jobs:
   test:
@@ -11,8 +25,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
-      - name: Instalar XcodeGen
-        run: brew install xcodegen
+      - name: Versão do Xcode
+        run: xcodebuild -version
+      - name: Instalar XcodeGen (versão fixa, SHA-256 verificado)
+        run: bash .github/scripts/install-xcodegen.sh
       - name: Gerar projeto
         working-directory: ios
         run: xcodegen generate
@@ -22,6 +38,8 @@ jobs:
       - name: Rodar testes
         working-directory: ios
         run: |
+          # LM_SKIP_METADATA_EXTRACTION=YES silencia o aviso de metadados de App Intents;
+          # remover se o app passar a usar App Intents (Atalhos/widgets).
           xcodebuild test \
             -project TelaDois.xcodeproj \
             -scheme TelaDois \
@@ -34,14 +52,23 @@ jobs:
         run: |
           mkdir -p screenshots
           if [ -d TestResults.xcresult ]; then
-            xcrun xcresulttool export attachments --path TestResults.xcresult --output-path screenshots || true
+            xcrun xcresulttool export attachments --path TestResults.xcresult --output-path screenshots
+          fi
+      - name: Exigir ao menos um print
+        if: success()
+        run: |
+          count="$(find screenshots -name '*.png' | wc -l | tr -d ' ')"
+          echo "prints exportados: $count"
+          if [ "$count" -eq 0 ]; then
+            echo "testes passaram mas nenhum .png foi exportado" >&2
+            exit 1
           fi
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: screenshots
           path: screenshots
-          if-no-files-found: ignore
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v7
         if: always()
         with:
