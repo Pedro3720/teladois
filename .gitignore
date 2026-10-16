@@ -22,6 +22,9 @@ node_modules/
 /prototype/test-results/
 /prototype/playwright-report/
 
+# Prints e logs do Playwright MCP (verificação manual)
+/.playwright-mcp/
+
 # SO / editores
 .DS_Store
 Thumbs.db
