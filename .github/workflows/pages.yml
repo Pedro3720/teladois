@@ -1,0 +1,37 @@
+name: pages
+# Publica o protótipo do Modo Descanso em https://pedro3720.github.io/teladois/
+on:
+  push:
+    branches: [main]
+    paths: ["prototype/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Montar site (só os arquivos do protótipo, sem testes nem node_modules)
+        run: |
+          mkdir _site
+          cp prototype/index.html prototype/styles.css prototype/app.js _site/
+          echo "commit: ${GITHUB_SHA}" > _site/build.txt
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
