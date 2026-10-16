@@ -30,22 +30,15 @@ final class LaunchUITests: XCTestCase {
         XCTAssertEqual(g.midX, w.midX, accuracy: 3)
         XCTAssertEqual(g.midY, w.midY, accuracy: 3)
 
-        // Captura (diagnóstico: três variantes + dados de orientação).
-        let appShot = app.screenshot()
-        let screenShot = XCUIScreen.main.screenshot()
-        let normalized = Self.normalized(appShot.image)
-        let diag = """
-        deviceOrientation=\(XCUIDevice.shared.orientation.rawValue)
-        window=\(w) greeting=\(g)
-        app.screenshot size=\(appShot.image.size) scale=\(appShot.image.scale) orientation=\(appShot.image.imageOrientation.rawValue)
-        screen.screenshot size=\(screenShot.image.size) scale=\(screenShot.image.scale) orientation=\(screenShot.image.imageOrientation.rawValue)
-        normalized size=\(normalized.size) scale=\(normalized.scale)
-        """
-        print(diag)
-        attach(text: diag, name: "00-diagnostico")
-        attach(image: appShot.image, name: "01a-app-screenshot")
-        attach(image: screenShot.image, name: "01b-screen-screenshot")
-        attach(image: normalized, name: "01-launch")
+        // XCUIScreen entrega o buffer do framebuffer (retrato) com `imageOrientation` correto;
+        // o export do .xcresult ignora essa orientação. Redesenhar aplica a rotação nos pixels.
+        let image = Self.normalized(XCUIScreen.main.screenshot().image)
+        XCTAssertGreaterThan(image.size.width, image.size.height, "print deve ser em paisagem")
+
+        let shot = XCTAttachment(image: image)
+        shot.name = "01-launch"
+        shot.lifetime = .keepAlways
+        add(shot)
     }
 
     /// Redesenha a imagem respeitando `imageOrientation` (o desenho aplica a rotação).
@@ -54,19 +47,5 @@ final class LaunchUITests: XCTestCase {
         format.scale = image.scale
         let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
         return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: image.size)) }
-    }
-
-    private func attach(image: UIImage, name: String) {
-        let a = XCTAttachment(image: image)
-        a.name = name
-        a.lifetime = .keepAlways
-        add(a)
-    }
-
-    private func attach(text: String, name: String) {
-        let a = XCTAttachment(string: text)
-        a.name = name
-        a.lifetime = .keepAlways
-        add(a)
     }
 }
