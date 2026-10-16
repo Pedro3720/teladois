@@ -27,6 +27,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: Versão do Xcode
         run: xcodebuild -version
+      - name: Testes do pacote TelaDoisCore (swift test)
+        run: swift test --package-path ios/Packages/TelaDoisCore
       - name: Instalar XcodeGen (versão fixa, SHA-256 verificado)
         run: bash .github/scripts/install-xcodegen.sh
       - name: Gerar projeto
