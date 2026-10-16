@@ -2,7 +2,7 @@ import XCTest
 import UIKit
 
 final class LaunchUITests: XCTestCase {
-    override func setUp() {
+    override func setUpWithError() throws {
         continueAfterFailure = false
     }
 
@@ -39,13 +39,5 @@ final class LaunchUITests: XCTestCase {
         shot.name = "01-launch"
         shot.lifetime = .keepAlways
         add(shot)
-    }
-
-    /// Redesenha a imagem respeitando `imageOrientation` (o desenho aplica a rotação).
-    private static func normalized(_ image: UIImage) -> UIImage {
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = image.scale
-        let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
-        return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: image.size)) }
     }
 }
