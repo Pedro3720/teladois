@@ -6,6 +6,7 @@ extension XCTestCase {
     ///
     /// `XCUIScreen.main.screenshot()` entrega o buffer do framebuffer (retrato) com `imageOrientation`
     /// correto; o export do .xcresult ignora essa orientação, então normalize antes de anexar.
+    @MainActor
     static func normalized(_ image: UIImage) -> UIImage {
         let format = UIGraphicsImageRendererFormat()
         format.scale = image.scale

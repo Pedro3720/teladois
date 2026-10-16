@@ -1,8 +1,9 @@
 import XCTest
 import UIKit
 
+@MainActor
 final class RestScreenUITests: XCTestCase {
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         continueAfterFailure = false
     }
 
