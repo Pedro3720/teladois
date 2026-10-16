@@ -1,0 +1,56 @@
+import SwiftUI
+import TelaDoisCore
+
+/// Página 1 do Modo Descanso: relógio gigante à esquerda; data, temperatura e bateria à direita.
+struct ClockPageView: View {
+    let clock: ClockText
+    let temperature: String?
+    let batteryLevel: Double
+    let isCharging: Bool
+    /// Área segura da tela (a página em si ignora a área segura e aplica as folgas manualmente).
+    let safeArea: EdgeInsets
+
+    var body: some View {
+        GeometryReader { geo in
+            let height = geo.size.height
+            let width = geo.size.width
+            HStack(alignment: .center, spacing: width * 0.04) {
+                Text("\(clock.hours):\(clock.minutes)")
+                    .font(.system(size: height * 0.95, weight: .bold).width(.compressed))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.clock)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.3)
+                    // Identificador no próprio Text (antes do .frame) para o teste medir o texto, não a coluna.
+                    .accessibilityIdentifier("clock")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            (Text(clock.weekday).foregroundStyle(Theme.clock)
+                                + Text(", \(clock.day)").foregroundStyle(Theme.ink))
+                                .accessibilityIdentifier("date")
+                            if let temperature {
+                                Text(temperature)
+                                    .foregroundStyle(Theme.ink)
+                                    .accessibilityIdentifier("temp")
+                            }
+                        }
+                        .font(.system(size: height * 0.095, weight: .semibold, design: .rounded))
+                        .lineLimit(1)
+                        Spacer(minLength: 0)
+                        BatteryRingView(level: batteryLevel, isCharging: isCharging)
+                            .frame(width: height * 0.22, height: height * 0.22)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .frame(width: width * 0.3)
+            }
+            .padding(.leading, max(safeArea.leading + 12, Theme.sideMargin))
+            .padding(.trailing, max(safeArea.trailing + 12, Theme.rightClearance))
+            .padding(.top, max(safeArea.top + 12, Theme.topClearance))
+            .padding(.bottom, max(safeArea.bottom + 12, Theme.bottomMargin))
+        }
+    }
+}
