@@ -27,7 +27,7 @@ jobs:
       - name: Montar site (só os arquivos do protótipo, sem testes nem node_modules)
         run: |
           mkdir _site
-          cp prototype/index.html prototype/styles.css prototype/app.js _site/
+          cp prototype/index.html prototype/styles.css prototype/app.js prototype/icon-180.png prototype/icon-32.png _site/
           echo "commit: ${GITHUB_SHA}" > _site/build.txt
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4

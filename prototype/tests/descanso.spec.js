@@ -58,6 +58,19 @@ test('anel da bateria fica longe do canto arredondado da tela', async ({ page })
   expect(battery.y).toBeGreaterThanOrEqual(24);
 });
 
+test('ícone da Tela de Início existe em 180×180 e o favicon em 32×32', async ({ page, request }) => {
+  await open(page);
+  for (const [selector, size] of [['link[rel="apple-touch-icon"]', 180], ['link[rel="icon"]', 32]]) {
+    const href = await page.locator(selector).getAttribute('href');
+    const res = await request.get(`/${href}`);
+    expect(res.status()).toBe(200);
+    const png = await res.body();
+    expect(png.subarray(1, 4).toString()).toBe('PNG');
+    expect(png.readUInt32BE(16)).toBe(size);
+    expect(png.readUInt32BE(20)).toBe(size);
+  }
+});
+
 test('sem localização a temperatura fica escondida', async ({ page }) => {
   await open(page, 'intro=0');
   await expect(page.getByTestId('temp')).toBeHidden();

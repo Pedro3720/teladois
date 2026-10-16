@@ -50,6 +50,13 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             LM_SKIP_METADATA_EXTRACTION=YES
+      - name: Conferir ícone do app no pacote
+        run: |
+          APP=build/Build/Products/Release-iphoneos/TelaDois.app
+          test -f "$APP/Assets.car" || { echo "::error::Assets.car ausente (ícone não compilado)"; exit 1; }
+          ICON=$(plutil -extract CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconName raw "$APP/Info.plist")
+          echo "CFBundleIconName=$ICON"
+          [ "$ICON" = "AppIcon" ] || { echo "::error::CFBundleIconName esperado AppIcon, veio '$ICON'"; exit 1; }
       - name: Empacotar .ipa
         run: |
           mkdir -p Payload out
