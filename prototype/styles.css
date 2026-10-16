@@ -78,9 +78,11 @@ button:focus-visible { outline: 2px solid var(--clock); outline-offset: 4px; bor
 /* ---------- Página 1: relógio ---------- */
 .page-clock {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   column-gap: 4vw;
+  /* Afasta a coluna da direita do canto arredondado da tela (raio ~55 pt), com ou sem área segura. */
+  padding-right: max(calc(env(safe-area-inset-right) + 12px), 48px);
 }
 
 .clock {
@@ -88,7 +90,7 @@ button:focus-visible { outline: 2px solid var(--clock); outline-offset: 4px; bor
   font-weight: 800;
   /* Assinatura do StandBy: dígitos altos e estreitos. A fonte condensada é esticada na vertical
      e o tamanho é limitado pela largura e pela altura para nunca invadir a coluna da direita. */
-  font-size: min(29vw, 68dvh);
+  font-size: min(26.5vw, 68dvh);
   line-height: .78;
   letter-spacing: -.005em;
   color: var(--clock);
@@ -105,7 +107,7 @@ button:focus-visible { outline: 2px solid var(--clock); outline-offset: 4px; bor
   flex-direction: column;
   justify-content: space-between;
   min-width: 30vw;
-  padding: 3dvh 0 4dvh;
+  padding: 5dvh 0 4dvh;
 }
 
 .side-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }

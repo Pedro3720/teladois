@@ -4,7 +4,9 @@ import { test, expect } from '@playwright/test';
 const START = new Date('2026-10-14T10:51:30-03:00');
 
 async function open(page, query = 'intro=0&temp=23') {
-  await page.clock.install({ time: START });
+  // Relógio falso parado em START: o tempo só anda com clock.runFor, então os testes não dependem da velocidade da máquina.
+  await page.clock.install({ time: new Date(START.getTime() - 60_000) });
+  await page.clock.pauseAt(START);
   await page.goto(`/?${query}`);
   await page.evaluate(() => document.fonts.ready);
 }
@@ -44,6 +46,16 @@ test('relógio e coluna da direita cabem na tela sem se sobrepor', async ({ page
   expect(clock.x + clock.width).toBeLessThan(date.x);
   // Dígitos ocupam boa parte da altura, como no StandBy.
   expect(clock.height).toBeGreaterThan(vp.height * 0.6);
+});
+
+test('anel da bateria fica longe do canto arredondado da tela', async ({ page }) => {
+  // Os cantos do iPhone têm raio de ~55 pt; elementos colados no canto são cortados.
+  // O WebKit de teste não simula a área segura, então exigimos a folga mínima mesmo sem ela.
+  await open(page);
+  const vp = page.viewportSize();
+  const battery = await box(page, 'battery');
+  expect(vp.width - (battery.x + battery.width)).toBeGreaterThanOrEqual(44);
+  expect(battery.y).toBeGreaterThanOrEqual(24);
 });
 
 test('sem localização a temperatura fica escondida', async ({ page }) => {
