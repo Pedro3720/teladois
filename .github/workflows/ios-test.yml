@@ -1,7 +1,7 @@
 name: ios-test
 on:
   push:
-    branches: [main]
+    branches: [main, "etapa-*"]
     paths:
       - "ios/**"
       - ".github/workflows/ios-test.yml"
@@ -53,6 +53,7 @@ jobs:
           mkdir -p screenshots
           if [ -d TestResults.xcresult ]; then
             xcrun xcresulttool export attachments --path TestResults.xcresult --output-path screenshots
+            python3 .github/scripts/rename-screenshots.py screenshots
           fi
       - name: Exigir ao menos um print
         if: success()
