@@ -42,7 +42,11 @@ struct RestScreenView: View {
                     Color.black
                         .contentShape(Rectangle())
                         .onTapGesture { wake() }
-                        .transition(.opacity.animation(.easeIn(duration: 1.2)))
+                        // Escurece com fade; acorda na hora (sem fade na saída).
+                        .transition(.asymmetric(
+                            insertion: .opacity.animation(.easeIn(duration: 1.2)),
+                            removal: .identity
+                        ))
                         .accessibilityElement()
                         .accessibilityIdentifier("dim-overlay")
                         .accessibilityLabel("Tela escurecida")
