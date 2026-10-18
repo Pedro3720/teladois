@@ -156,7 +156,7 @@ Cada etapa termina em algo funcionando e verificado.
 |---|---|---|
 | 0 | Fundação | Repositório no GitHub, CI gerando o `.ipa` de um app "Olá", app instalado no iPhone via Sideloadly |
 | 1 | Design | Ícone (Canva), tokens de cor/tipografia, protótipo HTML aprovado |
-| 2 | Descanso v1 | Relógio, data, bateria, clima, escurecer em 60 s e acender com 1 toque — testado no CI e no iPhone |
+| 2 | Descanso v1 | Relógio, data, bateria, clima, escurecer em 60 s e acender com 1 toque — testado no CI e no iPhone — concluída no CI em 2026-10-18; instalada e aberta no iPhone em 2026-10-18 (build do `9cce6d6`) |
 | 3 | Spotify | Página Música com capa, progresso e controles |
 | 4 | Túnel USB | App do PC detecta o iPhone e troca `HELLO`/`PING` pelo cabo |
 | 5 | Segunda Tela | Monitor virtual + transmissão + desconexão automática |

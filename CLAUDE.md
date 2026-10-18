@@ -46,6 +46,9 @@ App de iPhone que (1) vira **segunda tela do PC Windows via cabo USB** e (2) tem
 - Trabalhar em branch (`etapa-N-...`) e só juntar ao `main` (fast-forward) com `ios-test` **e** `ios-build` verdes no SHA final.
 - O `.ipa` entregue ao usuário deve vir de um commit cujas execuções `ios-test` **e** `ios-build` estão verdes.
 - Antes de entregar um `.ipa`, inspecione-o com Python isolado (`py -3 -I`, `plistlib` no `Info.plist`; cabeçalho Mach-O arm64 e ausência de `LC_CODE_SIGNATURE`), extraindo numa pasta vazia do scratchpad. O REA não inspeciona artefatos Apple no Windows; continua útil para binários Windows (ex.: driver de monitor virtual). `python3` no PATH pode ser o stub da Microsoft Store — use `py -3`.
+- Lógica pura fica no pacote `ios/Packages/TelaDoisCore` (Swift 6, testado com `swift test` no CI). O app só monta telas e liga serviços do iOS.
+- Prints do CI saem com o nome do anexo (`01-relogio.png` etc.) no artefato `screenshots`; simulador fixo: iPhone 16 Pro no runtime do SDK.
+- Antes de fotografar um estado com animação (ex.: o fade de 1,2 s do escurecer), o teste espera o estado final (ex.: `maxBrightness` do print abaixo de 5%); senão o print sai no meio da animação.
 - Testes de UI controlam o app por argumentos de lançamento: `-TDFixedDate <ISO8601>`, `-TDTimeZone <id>`, `-TDFixedTemp <°C>`, `-TDFixedBattery <0…1>`, `-TDDimSeconds <s>`.
 - Armadilha dos prints: `XCUIScreen.main.screenshot()` vem em retrato com `imageOrientation`; o export do xcresult ignora isso, por isso o teste redesenha a imagem (`ScreenshotHelpers.swift`).
 - Os testes de UI não detectam texto cortado nem tamanho visual errado: **revisar os prints** é parte obrigatória da verificação.
@@ -68,26 +71,22 @@ App de iPhone que (1) vira **segunda tela do PC Windows via cabo USB** e (2) tem
 | Tela preta + brilho 0 em vez de bloquear o iPhone | Bloqueado, o toque abriria a tela de bloqueio, não o app |
 | Segunda tela via usbmuxd (serviço da Apple) + driver de monitor virtual pronto e assinado | Mesmo caminho do Duet Display; driver próprio exigiria assinatura da Microsoft |
 
-## Estado atual (atualizado em 2026-10-16)
+## Estado atual (atualizado em 2026-10-18)
 **Pronto**
 - Etapa 0 — Fundação: repositório, CI, app "Olá" gerado e inspecionado.
 - Etapa 1 — Design: protótipo aprovado e publicado, ícone (Canva, opção "celular + monitor"), tokens em `docs/design/tokens.md`.
-- Etapa 2 (branch `etapa-2-descanso`), Tarefas 1–4 concluídas e revisadas: CI com simulador fixo e prints nomeados; pacote `TelaDoisCore` (`DimState`, `ClockFormatter`, `OpenMeteo`, 13 testes); página do relógio nativa (hora, "QUA., 14", temperatura, anel de bateria) com testes de UI e zero avisos.
-
-**Em andamento — Etapa 2, Tarefa 5 (pausada a pedido do usuário)**
-- Commits já no branch `etapa-2-descanso`: `c5adead` (teste de UI "escurecer e acordar", vermelho confirmado) e `9cce6d6` (implementação: tela preta + brilho 0, tela sempre ligada, acordar com 1 toque).
-- Falta: conferir o CI do `9cce6d6`; revisar os prints `02-escurecido.png` e `03-acordado.png`; revisão da tarefa; revisão final do branch; Tarefa 6 do plano (`.ipa` inspecionado, docs, juntar ao `main`).
-- Plano: `docs/superpowers/plans/2026-10-16-etapa-2-descanso-nativo.md` (executado com subagentes, um por tarefa, com revisão entre elas).
+- Etapa 2 — Modo Descanso nativo: pacote `TelaDoisCore` (`DimState`, `ClockFormatter`, `OpenMeteo`, 13 testes); página do relógio (hora, "QUA., 14", temperatura, anel de bateria); tela preta + brilho 0 após 60 s, tela sempre ligada, acordar com 1 toque (fade só ao escurecer; acordar é instantâneo). Prints `01`–`03` revisados. Plano: `docs/superpowers/plans/2026-10-16-etapa-2-descanso-nativo.md`.
+- **Primeira instalação no iPhone em 2026-10-18** (cabo de dados, Sideloadly, build do `9cce6d6`): instalou e abriu. Modo Desenvolvedor e confiança no Apple ID já feitos; renovar a cada 7 dias.
 
 **Pendências que o usuário decidiu deixar para depois**
 - Clima: tentar de novo em ~1 min após falha, tempo-limite na primeira localização e checar permissão antes (hoje pode ficar 30 min sem temperatura).
 - O teste "relógio ocupa > 50% da altura" mede a caixa do texto, não os dígitos; revisão de prints é a garantia real.
 
 **Bloqueio**
-- Instalar no iPhone: o cabo USB-C do usuário só carrega. Precisa de um cabo **de dados**. O PC já está pronto: iTunes 12.13 64-bit (versão web), iCloud web e Apple Mobile Device Support 20; o iTunes antigo foi removido.
+- Nenhum. O cabo de dados chegou; o PC tem iTunes 12.13 64-bit (versão web), iCloud web, Apple Mobile Device Support 20 e Sideloadly.
 
 **Próximos passos**
-1. Terminar a Etapa 2 (itens acima).
+1. Instalar o `.ipa` do `main` (com o acordar instantâneo) e conferir no iPhone: escurece após 60 s, acende com 1 toque, temperatura aparece.
 2. Etapa 3 — Spotify (página de música, mini player).
 3. Etapa 4 — túnel USB (app de bandeja C# detecta o iPhone, troca `HELLO`/`PING`).
 4. Etapa 5 — Segunda Tela (monitor virtual + FFmpeg + vídeo + desconexão automática).
