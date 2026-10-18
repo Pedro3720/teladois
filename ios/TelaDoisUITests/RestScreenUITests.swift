@@ -68,6 +68,12 @@ final class RestScreenUITests: XCTestCase {
         let app = launch(dimSeconds: 4)
         let overlay = app.buttons["dim-overlay"]
         XCTAssertTrue(overlay.waitForExistence(timeout: 10), "tela deveria escurecer após 4 s sem toque")
+        // A camada preta entra com fade de 1,2 s: espera a tela ficar preta de verdade antes do print.
+        let black = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in Self.maxBrightness(XCUIScreen.main.screenshot().image) < 0.05 },
+            object: nil
+        )
+        wait(for: [black], timeout: 5)
         attachScreenshot("02-escurecido")
 
         overlay.tap()
