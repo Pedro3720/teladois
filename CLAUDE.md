@@ -98,7 +98,7 @@ App de iPhone que (1) vira **segunda tela do PC Windows via cabo USB** e (2) tem
 
 **Bloqueio**
 - Nenhum. O cabo de dados chegou; o PC tem iTunes 12.13 64-bit (versão web), iCloud web, Apple Mobile Device Support 20 e Sideloadly.
-- PC `C:\Pedro\Arquivos Pedro\Aplicativo celular` (2026-10-19): graphify, uv 0.13.1 e .NET 10 SDK instalados (33 testes do PC passando). WSL instalado e `.wslconfig` com `networkingMode=mirrored`, mas **falta reiniciar**, abrir o Ubuntu e criar o usuário Linux, instalar o xtool 1.22.2 e fazer `xtool auth login`. Até lá, instalar no iPhone por este PC só pelo Sideloadly.
+- PC `C:\Pedro\Arquivos Pedro\Aplicativo celular` (2026-10-19): graphify, uv 0.13.1 e .NET 10 SDK instalados (33 testes do PC passando). WSL instalado, `.wslconfig` com `networkingMode=mirrored` e o xtool 1.22.2 já baixado e conferido em `C:\Users\Contabil 01\Downloads\xtool\xtool-x86_64.AppImage`. **Falta (depois de reiniciar uma vez):** abrir o Ubuntu e criar o usuário Linux; rodar `wsl -d Ubuntu -- bash "/mnt/c/Pedro/Arquivos Pedro/Aplicativo celular/tools/wsl/instalar-xtool.sh" "/mnt/c/Users/Contabil 01/Downloads/xtool/xtool-x86_64.AppImage"`; `wsl -d Ubuntu -- bash -lc 'xtool auth login'`. Até lá, instalar no iPhone por este PC só pelo Sideloadly.
 
 **Próximos passos**
 1. Etapa 5 — Segunda Tela (monitor virtual + FFmpeg + vídeo + desconexão automática). Já levantado: o Virtual Display Driver (VirtualDrivers/Virtual-Display-Driver, release 25.7.23) aceita comandos UTF-16 no pipe `\\.\pipe\MTTVirtualDisplayPipe` (`SETDISPLAYCOUNT n`, `RELOAD_DRIVER`, `PING`); resoluções em `C:\VirtualDisplayDriver\vdd_settings.xml`. O pipe aceita qualquer usuário do PC (`D:(A;;GA;;;WD)`) — anotar na revisão de segurança. GPU do PC: AMD Radeon → `h264_amf`.
@@ -127,7 +127,7 @@ Levantado dos arquivos de configuração deste PC em 2026-10-16 (`~/.claude/sett
 | iTunes 64-bit **versão web** + iCloud **versão web** | driver USB do iPhone (Apple Mobile Device Support) | links na seção de requisitos de https://sideloadly.io (não usar Microsoft Store) |
 | .NET 10 SDK | app de bandeja e testes do PC | `winget install --id Microsoft.DotNet.SDK.10 -e` |
 | WSL + Ubuntu | rodar o xtool | `wsl --install -d Ubuntu`; em `%USERPROFILE%\.wslconfig`: `[wsl2]` `networkingMode=mirrored` (o Ubuntu enxerga o `127.0.0.1:27015` do Windows) |
-| xtool 1.22.2 (no Ubuntu) | instalar o `.ipa` no iPhone | AppImage de https://github.com/xtool-org/xtool extraído em `/opt/xtool` (link `/usr/local/bin/xtool`); `sudo apt install zip unzip`; `/etc/profile.d/xtool-usbmuxd.sh` com `export USBMUXD_SOCKET_ADDRESS=127.0.0.1:27015`; `xtool auth login` (Apple ID; o próprio usuário digita) |
+| xtool 1.22.2 (no Ubuntu) | instalar o `.ipa` no iPhone | Script `tools/wsl/instalar-xtool.sh` (confere o SHA-256, instala `zip`/`unzip`, extrai o AppImage em `/opt/xtool`, cria `/usr/local/bin/xtool` e `/etc/profile.d/xtool-usbmuxd.sh` com `USBMUXD_SOCKET_ADDRESS=127.0.0.1:27015`): `wsl -d Ubuntu -- bash "/mnt/<repo>/tools/wsl/instalar-xtool.sh" ["/mnt/<AppImage já baixado>"]`; depois `wsl -d Ubuntu -- bash -lc 'xtool auth login'` (Apple ID; o próprio usuário digita) |
 | Sideloadly (alternativa) | instalar o `.ipa` no iPhone | https://sideloadly.io |
 | Claude Desktop (opcional) | traz os plugins e conectores da conta automaticamente | https://claude.ai/download |
 

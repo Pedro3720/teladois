@@ -10,7 +10,7 @@ Desde 2026-10-18 o jeito principal é o **xtool**, que roda no Ubuntu do WSL e u
    [wsl2]
    networkingMode=mirrored
    ```
-2. No Ubuntu: xtool 1.22.2 (AppImage de https://github.com/xtool-org/xtool extraído em `/opt/xtool`, link em `/usr/local/bin/xtool`), `sudo apt install zip unzip` e o arquivo `/etc/profile.d/xtool-usbmuxd.sh` com `export USBMUXD_SOCKET_ADDRESS=127.0.0.1:27015`.
+2. No Ubuntu: xtool 1.22.2 (AppImage de https://github.com/xtool-org/xtool extraído em `/opt/xtool`, link em `/usr/local/bin/xtool`), `sudo apt install zip unzip` e o arquivo `/etc/profile.d/xtool-usbmuxd.sh` com `export USBMUXD_SOCKET_ADDRESS=127.0.0.1:27015`. O script `tools/wsl/instalar-xtool.sh` faz tudo isso e confere o SHA-256: `wsl -d Ubuntu -- bash "/mnt/<pasta do repositório>/tools/wsl/instalar-xtool.sh"` (ele pede a senha do Ubuntu).
 3. `xtool auth login` no Ubuntu, com o seu Apple ID. Você digita a senha e o código de 6 dígitos.
 4. Na primeira instalação o xtool pode pedir para **revogar o certificado** antigo (o do Sideloadly). Respondendo `yes`, os apps instalados pelo Sideloadly param de abrir até serem reinstalados.
 
