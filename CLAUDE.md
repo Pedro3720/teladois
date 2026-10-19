@@ -23,16 +23,21 @@ App de iPhone que (1) vira **segunda tela do PC Windows via cabo USB** e (2) tem
 ### Estrutura de pastas
 - `ios/TelaDois/` — telas e serviços do app (SwiftUI)
 - `ios/TelaDoisUITests/` — testes de UI (XCUITest) que geram os prints
-- `ios/Packages/TelaDoisCore/` — lógica pura testável (`DimState`, `ClockFormatter`, `OpenMeteo`, `LinkProtocol`, `LinkSessionState`)
-- `ios/TelaDois/UsbLink.swift` — escuta o PC em `127.0.0.1:7100` (túnel do usbmuxd)
+- `ios/Packages/TelaDoisCore/` — lógica pura testável (`DimState`, `ClockFormatter`, `OpenMeteo`, `LinkProtocol`, `LinkSessionState`, `H264`)
+- `ios/TelaDois/UsbLink.swift` — escuta o PC em `127.0.0.1:7100` (túnel do usbmuxd); com `CONFIG` liga a Segunda Tela
+- `ios/TelaDois/StreamPlayer.swift` + `SecondScreenView.swift` — vídeo H.264 do PC em tela cheia (`AVSampleBufferDisplayLayer`)
+- `ios/TelaDoisUITests/Fixtures/testsrc.h264` — 30 quadros de teste (mesma amostra em `windows/tests/.../Fixtures/`)
 - `ios/TelaDois/Assets.xcassets/` — ícone do app
 - `prototype/` — protótipo do Modo Descanso (`index.html`, `styles.css`, `app.js`, `serve.mjs`, `tests/`)
 - `windows/` — solução .NET (`TelaDois.sln`, SDK fixo em `global.json`, avisos = erros em `Directory.Build.props`)
   - `src/TelaDois.Core/Link/` — protocolo PC ↔ iPhone e `LinkSession` (HELLO, PING/PONG, BYE, tempo-limite)
   - `src/TelaDois.Core/Usbmux/` — plist e cliente do usbmuxd (`Listen`, `Connect`)
   - `src/TelaDois.Core/UsbTunnelService.cs` — espera o iPhone, reconecta, acompanha a sessão
+  - `src/TelaDois.Core/Video/` — `H264AccessUnitSplitter`, `IVideoSource`, `FfmpegArgs`/`FfmpegCapture`, `SecondScreenSource` (Etapa 5)
+  - `src/TelaDois.Core/Display/DisplayManager.cs` — liga/desliga o monitor virtual no desktop (Win32, sem administrador)
   - `src/TelaDois.Tray/` — app de bandeja (`TelaDois.exe`)
-  - `tests/TelaDois.Core.Tests/` — xUnit com usbmuxd e iPhone falsos (`Fakes/`)
+  - `tests/TelaDois.Core.Tests/` — xUnit com usbmuxd, iPhone e fonte de vídeo falsos (`Fakes/`); `FfmpegCaptureTests` são `Category=Local` (rodam o FFmpeg de verdade, fora do CI)
+  - `tools/probe-usbmux.ps1` — diagnóstico do túnel porta a porta
 - `.github/workflows/` — `ios-test.yml`, `ios-build.yml`, `windows-test.yml`, `prototype-test.yml`, `pages.yml`
 - `.github/scripts/` — instalar XcodeGen, escolher simulador, renomear prints
 - `docs/` — especificação, planos, design, `INSTALACAO.md`
@@ -43,7 +48,7 @@ App de iPhone que (1) vira **segunda tela do PC Windows via cabo USB** e (2) tem
 - **App iOS:** não roda localmente (não há Mac). Fluxo: push no branch `etapa-*` → CI roda testes e build.
   - `gh workflow run ios-test.yml --ref <branch>` / `gh run watch <id>` — testes + prints do simulador (artefato `screenshots`, arquivos `01-relogio.png` etc.).
   - `gh workflow run ios-build.yml --ref <branch>` — artefato `TelaDois-ipa` (`TelaDois.ipa` + `BUILD_INFO.txt`).
-- **App do PC:** `dotnet test windows/TelaDois.sln` (rápido, local); publicar com `dotnet publish windows/src/TelaDois.Tray/TelaDois.Tray.csproj -c Release -o builds/windows` → `builds/windows/TelaDois.exe`. Registro em `%LOCALAPPDATA%\TelaDois\tela-dois.log` (é ele que mostra se o túnel abriu).
+- **App do PC:** `dotnet test windows/TelaDois.sln` (rápido, local; inclui os testes `Category=Local`, que precisam do FFmpeg — o CI roda com `--filter "Category!=Local"`); publicar com `dotnet publish windows/src/TelaDois.Tray/TelaDois.Tray.csproj -c Release -o builds/windows` → `builds/windows/TelaDois.exe`. Registro em `%LOCALAPPDATA%\TelaDois\tela-dois.log` (é ele que mostra se o túnel abriu).
 - **Instalar no iPhone:** `wsl -d Ubuntu -- bash -lc 'xtool install --usb /mnt/d/Downloads/Teladois/builds/<pasta>/TelaDois.ipa'` (o `bash -lc` carrega o `USBMUXD_SOCKET_ADDRESS`; sem ele o xtool fica em "Waiting for device"). Guia: `docs/INSTALACAO.md`.
 - **Testar o túnel sem o app do PC:** `windows/tools/probe-usbmux.ps1 -DeviceId <n> -Ports 62078,7100` — pede ao usbmuxd um `Connect` por porta; código 0 = aceito, 2 = DeviceID errado (ele muda a cada vez que o cabo é reconectado; o script lista o atual), 3 = ninguém escuta nessa porta. A 62078 é do próprio iOS e sempre aceita: serve de controle.
 
@@ -52,7 +57,9 @@ App de iPhone que (1) vira **segunda tela do PC Windows via cabo USB** e (2) tem
 - Não há Mac. Nunca rode `xcodebuild`/`xcodegen`/`swift` localmente. O código iOS é verificado **só** pelo GitHub Actions.
 - O `.xcodeproj` é gerado a partir de `ios/project.yml` (XcodeGen). Nunca versione o `.xcodeproj`.
 - Trabalhar em branch (`etapa-N-...`) e só juntar ao `main` (fast-forward) com `ios-test`, `ios-build` **e** `windows-test` verdes no SHA final.
-- O protocolo PC ↔ iPhone existe em Swift (`TelaDoisCore/LinkProtocol.swift`) e em C# (`TelaDois.Core/Link/`). Mudou um lado, mude o outro e os **bytes de referência** nos dois testes (`HELLO(2556,1179)` = `010000000A0001000009FC0000049B`; `PING(1234567890123)` = `05000000080000011F71FB04CB`).
+- O protocolo PC ↔ iPhone existe em Swift (`TelaDoisCore/LinkProtocol.swift`) e em C# (`TelaDois.Core/Link/`). Mudou um lado, mude o outro e os **bytes de referência** nos dois testes (`HELLO(2556,1179)` = `010000000A0001000009FC0000049B`; `PING(1234567890123)` = `05000000080000011F71FB04CB`; `CONFIG(2556,1179,60)` = `020000000A000009FC0000049B003C`; `KEYFRAME_REQ` = `0400000000`). Cada `VIDEO` leva **um** access unit H.264 Annex-B que começa num AUD.
+- Script de espera do CI: não confie no código de saída do `gh run watch` (deu "falha" duas vezes com a execução verde); confirme com `gh run view <id> --json status,conclusion`.
+- Um push com mudança em `ios/**` cancela o `ios-test` que estiver rodando no mesmo branch (`cancel-in-progress`). Para ver um "vermelho" do TDD no CI, espere a execução anterior terminar antes do próximo push.
 - Antes de concluir que algo "não funciona no iPhone", confirme que a versão nova **foi instalada** (o instalador terminou com sucesso). Na Etapa 4 o túnel parecia quebrado, mas era a versão antiga aberta: o Sideloadly tinha falhado no login.
 - O `.ipa` entregue ao usuário deve vir de um commit cujas execuções `ios-test` **e** `ios-build` estão verdes.
 - Antes de entregar um `.ipa`, inspecione-o com Python isolado (`py -3 -I`, `plistlib` no `Info.plist`; cabeçalho Mach-O arm64 e ausência de `LC_CODE_SIGNATURE`), extraindo numa pasta vazia do scratchpad. O REA não inspeciona artefatos Apple no Windows; continua útil para binários Windows (ex.: driver de monitor virtual). `python3` no PATH pode ser o stub da Microsoft Store — use `py -3`.
@@ -81,9 +88,14 @@ App de iPhone que (1) vira **segunda tela do PC Windows via cabo USB** e (2) tem
 | Tela preta + brilho 0 em vez de bloquear o iPhone | Bloqueado, o toque abriria a tela de bloqueio, não o app |
 | Segunda tela via usbmuxd (serviço da Apple) + driver de monitor virtual pronto e assinado | Mesmo caminho do Duet Display; driver próprio exigiria assinatura da Microsoft |
 | App escuta só em `127.0.0.1:7100` | O túnel do usbmuxd chega no loopback do iPhone; nada fica exposto no Wi-Fi e não há pedido de "rede local". Testado no aparelho em 2026-10-18 |
+| Monitor virtual fica instalado; o app só o liga/desliga do desktop (`ChangeDisplaySettingsEx`) | O Virtual Display Driver não aceita 0 monitores (`count` 0 vira 1). Tirar do desktop (tamanho 0) faz o Windows devolver as janelas ao monitor principal e não precisa de administrador |
+| Saída do `ddagrab` achada pelo tamanho (abre cada índice e lê `WxH` no log) | Evita interop COM com DXGI; testado: acha o monitor principal 1600×900 |
+| FFmpeg `ddagrab,hwdownload,format=bgra,format=nv12` + `h264_amf -usage ultralowlatency -bf 0 -g 60 -header_spacing 60` | O `h264_amf` recusa BGRA e o `scale_d3d11` falha neste driver AMD; a conversão para NV12 na CPU dá 60 fps em 1600×900. AMF já põe AUD e SPS/PPS a cada IDR. Reserva: `libx264 ultrafast zerolatency` com `repeat-headers=1` e `h264_metadata=aud=insert` |
+| `KEYFRAME_REQ` não força keyframe; GOP de 1 s | O FFmpeg não aceita pedido de keyframe no meio; no pior caso o iPhone espera 1 s para se recuperar |
+| iPhone decodifica com `AVSampleBufferDisplayLayer.sampleBufferRenderer` e `DisplayImmediately` | Decodificação por hardware sem montar VideoToolbox à mão; mostra cada quadro assim que chega (menor latência). A API do renderer (iOS 17) evita os avisos de depreciação da camada |
 | xtool (no Ubuntu do WSL) em vez do Sideloadly | Em 2026-10-18 o login do Sideloadly na Apple falhou (404). O xtool roda no Linux e usa o usbmuxd do Windows pela rede espelhada do WSL (`networkingMode=mirrored`), sem passar o USB para o Linux. Instalar pelo xtool revogou o certificado antigo: apps instalados pelo Sideloadly precisam ser reinstalados |
 
-## Estado atual (atualizado em 2026-10-18)
+## Estado atual (atualizado em 2026-10-19)
 **Pronto**
 - Etapa 0 — Fundação: repositório, CI, app "Olá" gerado e inspecionado.
 - Etapa 1 — Design: protótipo aprovado e publicado, ícone (Canva, opção "celular + monitor"), tokens em `docs/design/tokens.md`.
@@ -91,18 +103,33 @@ App de iPhone que (1) vira **segunda tela do PC Windows via cabo USB** e (2) tem
 - **Primeira instalação no iPhone em 2026-10-18** (cabo de dados, Sideloadly, build do `9cce6d6`): instalou e abriu. Modo Desenvolvedor e confiança no Apple ID já feitos; renovar a cada 7 dias.
 - Etapa 4 — Túnel USB (2026-10-18): app do iPhone escuta em `127.0.0.1:7100`, manda `HELLO`, responde `PING`; `TelaDois.exe` na bandeja detecta o iPhone, abre o túnel pelo usbmuxd, mede a latência e reconecta sozinho. **Testado no iPhone pelo cabo** (build 24 do `45528d9`, instalado pelo xtool): "PC conectado" no iPhone, `conectado · 2556×1179 · poucos ms` na bandeja, reconexão ao sair/voltar do app e ao tirar/colocar o cabo. 33 testes no PC + 26 no pacote + 5 de UI. Plano: `docs/superpowers/plans/2026-10-18-etapa-4-tunel-usb.md`.
 
+**Em andamento — Etapa 5, Segunda Tela (branch `etapa-5-segunda-tela`, ainda não está no `main`)**
+- Plano: `docs/superpowers/plans/2026-10-19-etapa-5-segunda-tela.md` (Tarefas 1–7). Executado nesta sessão, sem subagentes.
+- Tarefa 1 (H.264 + `CONFIG`/`VIDEO`/`KEYFRAME_REQ` no `TelaDoisCore`): **verde no CI** (`2e4f913`).
+- Tarefas 3–6 (PC: mensagens de vídeo, separador de quadros, `LinkSession` com `IVideoSource`, `FfmpegCapture`, `DisplayManager`, `SecondScreenSource`, bandeja): **48 testes verdes no PC** (inclui FFmpeg real: 30 quadros, AMF escolhido, monitor principal achado pelo tamanho); último commit do PC `922e378`.
+- Tarefa 2 (iPhone mostra o vídeo, teste `05-segunda-tela`): commits `2f3c653` (teste) + `fba1bc5` (implementação), enviados juntos — **o CI só roda no `fba1bc5`**, então o "vermelho" do teste não foi confirmado. Ver o resultado do `ios-test`/`ios-build` desse SHA e **revisar o print `05-segunda-tela.png`** (padrão colorido em tela cheia).
+- **Falta (Tarefa 7):**
+  1. Baixar `VDD.Control.25.7.23.zip` (71 MB) da release 25.7.23 de https://github.com/VirtualDrivers/Virtual-Display-Driver — **o usuário ainda não autorizou o download** (pergunta feita em 2026-10-19). Conferir a assinatura (`Get-AuthenticodeSignature`) antes de instalar.
+  2. Usuário instala o driver (administrador). Em `C:\VirtualDisplayDriver\vdd_settings.xml`: `<count>1</count>` e resolução 2556×1179 @ 60; "Reload Driver".
+  3. Conferir sem iPhone: `DisplayManager.FindVirtualDisplay()` acha o adaptador (o nome procurado é "Virtual Display" — **não verificado no driver real**); ligar/desligar pelo `ChangeDisplaySettingsEx` funciona com monitor IddCx (**não verificado**); `ffmpeg -filter_complex ddagrab=output_idx=N -frames:v 1 -f null -` mostra 2556x1179.
+  4. `.ipa` do SHA verde instalado pelo xtool + `TelaDois.exe` novo (`dotnet publish …`); teste de ponta a ponta (janela arrastada aparece no iPhone; cabo/app no fundo desligam o monitor; latência, fps e CPU do FFmpeg).
+  5. Documentação (`INSTALACAO.md`: driver e FFmpeg), spec §8, `main` com os três CI verdes.
+
 **Pendências que o usuário decidiu deixar para depois**
 - Etapa 3 (Spotify): adiada em 2026-10-18 para chegar antes na Segunda Tela.
 - Clima: tentar de novo em ~1 min após falha, tempo-limite na primeira localização e checar permissão antes (hoje pode ficar 30 min sem temperatura).
 - O teste "relógio ocupa > 50% da altura" mede a caixa do texto, não os dígitos; revisão de prints é a garantia real.
 
 **Bloqueio**
-- Nenhum. O cabo de dados chegou; o PC tem iTunes 12.13 64-bit (versão web), iCloud web, Apple Mobile Device Support 20 e Sideloadly.
+- Etapa 5 depende do usuário: autorizar o download e instalar o Virtual Display Driver (administrador). O resto do PC está pronto: iTunes 12.13 web, Apple Mobile Device Support 20, xtool logado, FFmpeg 9.0.2.
+- O monitor virtual e o FFmpeg são do PC onde o projeto está em `D:\Downloads\Teladois` (GPU AMD Radeon, monitor 1600×900). No outro PC é preciso instalar FFmpeg e o driver de novo, e o codificador pode ser outro (NVIDIA → `h264_nvenc` ainda **não** implementado; cai no `libx264`).
 
 **Próximos passos**
-1. Etapa 5 — Segunda Tela (monitor virtual + FFmpeg + vídeo + desconexão automática). Já levantado: o Virtual Display Driver (VirtualDrivers/Virtual-Display-Driver, release 25.7.23) aceita comandos UTF-16 no pipe `\\.\pipe\MTTVirtualDisplayPipe` (`SETDISPLAYCOUNT n`, `RELOAD_DRIVER`, `PING`); resoluções em `C:\VirtualDisplayDriver\vdd_settings.xml`. O pipe aceita qualquer usuário do PC (`D:(A;;GA;;;WD)`) — anotar na revisão de segurança. GPU do PC: AMD Radeon → `h264_amf`.
-2. Etapa 3 — Spotify (página de música, mini player).
-3. Etapa 6 — acabamento.
+1. Terminar a Etapa 5 (itens "Falta" acima).
+2. Etapa 6 — acabamento (latência, iniciar com o Windows, ícone da bandeja, revisão de segurança: inclui o pipe do driver, que aceita qualquer usuário do PC — `D:(A;;GA;;;WD)`).
+3. Etapa 3 — Spotify (página de música, mini player).
+
+**Sobre o Virtual Display Driver** (lido no código-fonte, release 25.7.23): lê `C:\VirtualDisplayDriver\vdd_settings.xml` (`<monitors><count>`, `<resolutions>` com `width`/`height`/`refresh_rate`); `count` 0 vira 1; comandos UTF-16 no pipe `\\.\pipe\MTTVirtualDisplayPipe` (`RELOAD_DRIVER`, `SETDISPLAYCOUNT n`, `PING`).
 
 Há um projeto Android parecido em outra pasta (`C:\Pedro\Arquivos Pedro\Aplicativo Android`), com sessão e repositório próprios.
 
@@ -112,7 +139,25 @@ Nenhuma é necessária hoje. Credenciais ficam fora do repositório:
 - Futuro (Etapa 3): `SPOTIFY_CLIENT_ID` e `SPOTIFY_REDIRECT_URI` (Spotify Developer). Nunca versionar valores; usar arquivo local ignorado (`.env`) ou segredo do GitHub Actions.
 
 ## Ambiente do Claude Code
-Levantado dos arquivos de configuração deste PC em 2026-10-16 (`~/.claude/settings.json`, `~/.claude/plugins/`, `~/.claude/skills/`, `~/.claude.json`, plugins do app Claude Desktop). Não há `.mcp.json` nem `.claude/skills` no projeto.
+Primeiro levantamento em 2026-10-16 no PC original. **Verificado de novo em 2026-10-19 no PC do `D:\Downloads\Teladois`** com `Get-Command`, `claude plugin list`, `claude mcp list`, `~/.claude/settings.json`, `~/.claude/skills/`, `~/.claude.json`, `~/.wslconfig` e `xtool` no WSL. No projeto: `.claude/skills/encerrar` e `.claude/launch.json` (protótipo); não há `.mcp.json` nem `.claude/settings.json`.
+
+### O que está em cada PC (2026-10-19)
+| Item | PC do `D:\Downloads\Teladois` | PC original |
+|---|---|---|
+| git, gh 2.102 (logado), Node 24.20, Python 3.14 (`py`) | ✅ | ✅ |
+| .NET SDK 10.0.402 | ✅ | ❓ instalar |
+| uv 0.13.1 + graphify 0.9.92 | ✅ | ❌ instalar |
+| Claude Code CLI 2.1.303 | ✅ | ✅ (já usava) |
+| FFmpeg 9.0.2 (Gyan) | ✅ | ❌ instalar |
+| WSL Ubuntu 26.04 + xtool 1.22.2 (logado com o Apple ID) + `zip`/`unzip` | ✅ | ❌ instalar (se for instalar `.ipa` por lá) |
+| iTunes/iCloud web + Apple Mobile Device Support 20 | ✅ | ✅ |
+| Sideloadly | ✅ (certificado revogado pelo xtool) | ✅ |
+| Virtual Display Driver | ❌ (Etapa 5, falta instalar) | ❌ |
+| Plugins `agent-skills`, `frontend-design` | ✅ | ✅ |
+| Plugins `hyperframes`, `supabase` | ❌ | ✅ |
+| Skill pessoal `graphify` | ✅ | ❌ |
+| Skill pessoal `reverse-engineer-anything` + MCP `rea` | ❌ | ✅ |
+| MCP `apify` | ❌ | ✅ |
 
 ### Programas no Windows
 | Programa | Para quê | Como instalar |
@@ -127,6 +172,8 @@ Levantado dos arquivos de configuração deste PC em 2026-10-16 (`~/.claude/sett
 | .NET 10 SDK | app de bandeja e testes do PC | `winget install --id Microsoft.DotNet.SDK.10 -e` |
 | WSL + Ubuntu | rodar o xtool | `wsl --install -d Ubuntu`; em `%USERPROFILE%\.wslconfig`: `[wsl2]` `networkingMode=mirrored` (o Ubuntu enxerga o `127.0.0.1:27015` do Windows) |
 | xtool 1.22.2 (no Ubuntu) | instalar o `.ipa` no iPhone | AppImage de https://github.com/xtool-org/xtool extraído em `/opt/xtool` (link `/usr/local/bin/xtool`); `sudo apt install zip unzip`; `/etc/profile.d/xtool-usbmuxd.sh` com `export USBMUXD_SOCKET_ADDRESS=127.0.0.1:27015`; `xtool auth login` (Apple ID; o próprio usuário digita) |
+| FFmpeg 9 (build "full" da Gyan) | captura do monitor virtual e H.264 (Etapa 5); gerar amostras de teste | `winget install --id Gyan.FFmpeg -e` (o app acha o `ffmpeg.exe` no PATH ou na pasta do winget) |
+| Virtual Display Driver 25.7.23 | monitor extra do Windows (Etapa 5) | release em https://github.com/VirtualDrivers/Virtual-Display-Driver (VDD Control); o usuário instala (administrador) |
 | Sideloadly (alternativa) | instalar o `.ipa` no iPhone | https://sideloadly.io |
 | Claude Desktop (opcional) | traz os plugins e conectores da conta automaticamente | https://claude.ai/download |
 
@@ -176,6 +223,7 @@ Para tê-los também no CLI puro (os marketplaces já estão registrados neste P
 - [ ] `git pull` (e `git switch <branch da etapa>` + `git pull`).
 - [ ] Ler este `CLAUDE.md` inteiro antes de começar.
 - [ ] `gh auth status` (logado no GitHub).
+- [ ] Instalar o que a tabela "O que está em cada PC" marca com ❌/❓ para aquele PC.
 - [ ] Protótipo: `cd prototype && npm ci` se o `package-lock.json` mudou.
 
 O que **não** vai pelo git (fica em cada PC): a memória automática do Claude (`~/.claude/projects/.../memory`), o controle de tarefas dos subagentes (`.superpowers/sdd/`), a pasta `builds/` e os prints locais. Por isso o "Estado atual" é a fonte da verdade.
