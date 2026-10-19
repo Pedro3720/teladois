@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using TelaDois.Core.Video;
 
 namespace TelaDois.Core.Link;
 
@@ -7,8 +8,8 @@ public sealed record LinkSessionOptions(TimeSpan PingInterval, TimeSpan Timeout)
     public static LinkSessionOptions Default { get; } = new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(3));
 }
 
-/// <summary>Estado da conexão: resolução do iPhone e a última latência de ida e volta medida.</summary>
-public sealed record LinkStatus(HelloInfo Hello, TimeSpan? RoundTrip);
+/// <summary>Estado da conexão: resolução do iPhone, a última latência medida e o vídeo, se houver.</summary>
+public sealed record LinkStatus(HelloInfo Hello, TimeSpan? RoundTrip, VideoConfig? Video = null);
 
 public enum LinkEndReason
 {
@@ -21,10 +22,16 @@ public enum LinkEndReason
 /// <summary>
 /// Lado do PC: espera o HELLO, manda PING a cada intervalo, mede o PONG e encerra no BYE,
 /// quando o iPhone fecha o socket ou após o tempo-limite sem receber nada. Ao sair, manda BYE.
+/// Com uma fonte de vídeo: depois do HELLO manda CONFIG e cada quadro, e repassa KEYFRAME_REQ.
 /// </summary>
 public static class LinkSession
 {
-    public static async Task<LinkEndReason> RunAsync(Stream stream, Action<LinkStatus> onStatus, LinkSessionOptions options, CancellationToken ct)
+    public static async Task<LinkEndReason> RunAsync(
+        Stream stream,
+        Action<LinkStatus> onStatus,
+        LinkSessionOptions options,
+        CancellationToken ct,
+        IVideoSource? video = null)
     {
         var reader = new LinkFrameReader(stream);
         using var writeLock = new SemaphoreSlim(1, 1);
@@ -32,6 +39,8 @@ public static class LinkSession
         var clock = Stopwatch.StartNew();
         long lastHeard = 0;
         Task<LinkEndReason>? receiving = null;
+        Task<LinkEndReason>? pumping = null;
+        IVideoStream? videoStream = null;
 
         async Task SendAsync(LinkFrame frame, CancellationToken token)
         {
@@ -57,6 +66,24 @@ public static class LinkSession
             onStatus(status);
             Interlocked.Exchange(ref lastHeard, clock.ElapsedMilliseconds);
 
+            if (video is not null)
+            {
+                videoStream = await video.StartAsync(hello.Value, cts.Token);
+                await SendAsync(LinkMessages.Config(videoStream.Config), cts.Token);
+                status = status with { Video = videoStream.Config };
+                onStatus(status);
+                var frames = videoStream;
+                pumping = Task.Run(async () =>
+                {
+                    await foreach (var unit in frames.AccessUnitsAsync(cts.Token))
+                    {
+                        await SendAsync(LinkMessages.Video(unit), cts.Token);
+                    }
+                    return LinkEndReason.Closed;
+                }, CancellationToken.None);
+            }
+
+            var current = status;
             receiving = Task.Run(async () =>
             {
                 while (await reader.NextAsync(cts.Token) is { } frame)
@@ -65,10 +92,13 @@ public static class LinkSession
                     switch (frame.MessageType)
                     {
                         case LinkMessageType.Pong when LinkMessages.TryReadTimestamp(frame, out var sent):
-                            onStatus(status with { RoundTrip = TimeSpan.FromMilliseconds(clock.ElapsedMilliseconds - (long)sent) });
+                            onStatus(current with { RoundTrip = TimeSpan.FromMilliseconds(clock.ElapsedMilliseconds - (long)sent) });
                             break;
                         case LinkMessageType.Ping when LinkMessages.TryReadTimestamp(frame, out var theirs):
                             await SendAsync(LinkMessages.Pong(theirs), cts.Token);
+                            break;
+                        case LinkMessageType.KeyframeRequest:
+                            videoStream?.RequestKeyframe();
                             break;
                         case LinkMessageType.Bye:
                             return LinkEndReason.Bye;
@@ -80,9 +110,12 @@ public static class LinkSession
             while (true)
             {
                 var tick = Task.Delay(options.PingInterval, cts.Token);
-                if (await Task.WhenAny(receiving, tick) == receiving)
+                var finished = pumping is null
+                    ? await Task.WhenAny(receiving, tick)
+                    : await Task.WhenAny(receiving, pumping, tick);
+                if (finished is Task<LinkEndReason> ended)
                 {
-                    return await receiving;
+                    return await ended;
                 }
                 ct.ThrowIfCancellationRequested();
                 if (clock.ElapsedMilliseconds - Interlocked.Read(ref lastHeard) > options.Timeout.TotalMilliseconds)
@@ -107,15 +140,23 @@ public static class LinkSession
         finally
         {
             cts.Cancel();
-            if (receiving is not null)
+            foreach (var task in new[] { receiving, pumping })
             {
+                if (task is null)
+                {
+                    continue;
+                }
                 try
                 {
-                    await receiving;
+                    await task;
                 }
                 catch (Exception e) when (e is OperationCanceledException or IOException or ObjectDisposedException)
                 {
                 }
+            }
+            if (videoStream is not null)
+            {
+                await videoStream.DisposeAsync();
             }
             using var byeTimeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
             try
