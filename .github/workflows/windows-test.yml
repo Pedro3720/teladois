@@ -24,4 +24,5 @@ jobs:
         with:
           global-json-file: windows/global.json
       - name: Testes do PC
-        run: dotnet test windows/TelaDois.sln -c Release
+        # Category=Local roda o FFmpeg de verdade (só no PC do usuário).
+        run: dotnet test windows/TelaDois.sln -c Release --filter "Category!=Local"
