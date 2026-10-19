@@ -107,7 +107,7 @@ O projeto tem um grafo de conhecimento em `graphify-out/` (código pela AST + sp
 
 **Bloqueio**
 - Nenhum. O cabo de dados chegou; o PC tem iTunes 12.13 64-bit (versão web), iCloud web, Apple Mobile Device Support 20 e Sideloadly.
-- PC `C:\Pedro\Arquivos Pedro\Aplicativo celular` (2026-10-19): graphify, uv 0.13.1 e .NET 10 SDK instalados (33 testes do PC passando). WSL instalado, `.wslconfig` com `networkingMode=mirrored` e o xtool 1.22.2 já baixado e conferido em `C:\Users\Contabil 01\Downloads\xtool\xtool-x86_64.AppImage`. **Falta (depois de reiniciar uma vez):** abrir o Ubuntu e criar o usuário Linux; rodar `wsl -d Ubuntu -- bash "/mnt/c/Pedro/Arquivos Pedro/Aplicativo celular/tools/wsl/instalar-xtool.sh" "/mnt/c/Users/Contabil 01/Downloads/xtool/xtool-x86_64.AppImage"`; `wsl -d Ubuntu -- bash -lc 'xtool auth login'`. Até lá, instalar no iPhone por este PC só pelo Sideloadly.
+- PC `C:\Pedro\Arquivos Pedro\Aplicativo celular` (2026-10-19): **ambiente completo.** graphify, uv 0.13.1, .NET 10 SDK (33 testes do PC passando), WSL + Ubuntu (usuário `pedro`, rede espelhada) e xtool 1.22.2 com `xtool auth login` feito (token até 19/10/2027). `xtool devices` mostra o iPhone pelo cabo. Neste PC os caminhos do repositório no Ubuntu são `/mnt/c/Pedro/Arquivos Pedro/Aplicativo celular/...` (o comando de instalar do outro PC usa `/mnt/d/Downloads/Teladois/...`).
 
 **Próximos passos**
 1. Etapa 5 — Segunda Tela (monitor virtual + FFmpeg + vídeo + desconexão automática). Já levantado: o Virtual Display Driver (VirtualDrivers/Virtual-Display-Driver, release 25.7.23) aceita comandos UTF-16 no pipe `\\.\pipe\MTTVirtualDisplayPipe` (`SETDISPLAYCOUNT n`, `RELOAD_DRIVER`, `PING`); resoluções em `C:\VirtualDisplayDriver\vdd_settings.xml`. O pipe aceita qualquer usuário do PC (`D:(A;;GA;;;WD)`) — anotar na revisão de segurança. GPU do PC: AMD Radeon → `h264_amf`.
@@ -168,6 +168,9 @@ Para tê-los também no CLI puro (os marketplaces já estão registrados neste P
 ### Armadilhas de instalação já vistas
 - `uv` antigo (0.11.x) travava ao abrir ("capacity overflow"): `winget upgrade --id astral-sh.uv -e --force`.
 - `dotnet test` com `NU1100` ("Não foi possível resolver xunit…"): o NuGet do usuário estava sem nenhuma fonte. Corrigir com `dotnet nuget add source https://api.nuget.org/v3/index.json -n nuget.org`.
+- `xtool auth login` parando em `[Downloading libraries] NN%` com `HTTPClientError.remoteConnectionClosed`: a rede espelhada do WSL corta downloads grandes (o mesmo arquivo baixa inteiro pelo Windows). O xtool pula esse download se `~/.config/xtool/Anisette/libs/` existir; o `tools/wsl/instalar-xtool.sh` já cria essa pasta com download retomável. Senha certa mas erro `-22406` = senha digitada errada (ela não aparece na tela).
+- `wsl --install -d Ubuntu` antes do reinício só instala o WSL; se depois do reinício `wsl -l -v` disser "não tem distribuições instaladas", rode `wsl --install -d Ubuntu` de novo (sem reiniciar) e crie o usuário Linux na própria janela.
+- Do PowerShell para o Ubuntu, prefira `wsl -d Ubuntu --exec bash -lc '…'`: sem `--exec`, o shell intermediário do WSL expande `$VARIAVEIS` e mexe nas aspas antes do `bash -lc`.
 
 ### MCP servers
 | Nome | Para quê | Como configurar |
