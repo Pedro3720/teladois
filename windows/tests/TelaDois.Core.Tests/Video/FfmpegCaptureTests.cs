@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using TelaDois.Core.Link;
 using TelaDois.Core.Tests.Fakes;
 using TelaDois.Core.Video;
@@ -8,19 +9,36 @@ public class FfmpegCaptureTests
 {
     private static readonly VideoConfig Config = new(64, 64, 30);
     private static readonly TimeSpan[] FastBackoff = [TimeSpan.FromMilliseconds(10)];
+    private static readonly TimeSpan[] NoRestart = [TimeSpan.FromHours(1)];
+    private static readonly TimeSpan Generous = TimeSpan.FromSeconds(5);
+
+    private static Action<string> Collect(List<string> log) => line =>
+    {
+        lock (log)
+        {
+            log.Add(line);
+        }
+    };
+
+    private static string[] Snapshot(List<string> log)
+    {
+        lock (log)
+        {
+            return [.. log];
+        }
+    }
 
     [Fact]
     public async Task DeliversFramesAndRestartsWhenFfmpegExits()
     {
         var log = new List<string>();
         var runner = new FakeProcessRunner(_ => new FakeProcess(1, AccessUnitReaderTests.Fixture(), "caiu"));
-        // O roteiro entrega as 4 imagens de uma vez: com a fila padrão (3) toda rajada estoura e é descartada
-        // se o teste não estiver lendo naquele instante. Capacidade 4 = a rajada cabe e o teste é determinístico.
-        await using (var capture = new FfmpegCapture(runner, "ffmpeg", ["-x"], Config, line => { lock (log) { log.Add(line); } }, FastBackoff, queueCapacity: 4))
+        // Idade máxima folgada: o teste não depende de ler cada rajada antes de a próxima chegar.
+        await using (var capture = new FfmpegCapture(runner, "ffmpeg", ["-x"], Config, Collect(log), FastBackoff, maxQueueAge: TimeSpan.FromMinutes(1)))
         {
             Assert.Equal(Config, capture.Config);
             var frames = new List<AccessUnit>();
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var cts = new CancellationTokenSource(Generous);
             for (var i = 0; i < 8; i++)
             {
                 frames.Add(await capture.NextAsync(cts.Token));
@@ -28,8 +46,130 @@ public class FfmpegCaptureTests
             Assert.True(frames[0].IsKeyframe);
             Assert.True(runner.Started.Count >= 2, "deveria ter reiniciado o FFmpeg");
         }
-        Assert.Contains(log, line => line.Contains("caiu"));
+        Assert.Contains(Snapshot(log), line => line.Contains("caiu"));
         Assert.Equal(runner.Started.Count, runner.Disposed);
+    }
+
+    [Fact]
+    public async Task LogsOnceWhenTheCableFallsBehind()
+    {
+        // A 1ª imagem (completa) fica na fila sem ninguém ler; as outras 3 chegam bem depois de 1 ms.
+        var bytes = AccessUnitReaderTests.Fixture();
+        var auds = H264.ScanNals(bytes, bytes.Length).Where(n => n.Type == H264.Aud).Select(n => n.Start).ToArray();
+        var split = auds[1] + 6; // inclui o AUD da 2ª imagem inteiro: o leitor já entrega a 1ª
+        var stdout = new GatedStream(bytes[..split], bytes[split..]);
+        var log = new List<string>();
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runner = new FakeProcessRunner(_ => new FakeProcess(1, stream: stdout));
+        var capture = new FfmpegCapture(runner, "ffmpeg", ["-x"], Config, line =>
+        {
+            Collect(log)(line);
+            if (line.StartsWith("FFmpeg terminou:"))
+            {
+                finished.TrySetResult();
+            }
+        }, NoRestart, maxQueueAge: TimeSpan.FromMilliseconds(1));
+        await stdout.AtGate.Task.WaitAsync(Generous); // a 1ª imagem já está na fila
+        await Task.Delay(30);                          // e fica mais velha que 1 ms
+        stdout.Open.TrySetResult();
+        await finished.Task.WaitAsync(Generous);
+        Assert.Equal(4, capture.Dropped);
+        var warning = Assert.Single(Snapshot(log), line => line.StartsWith("cabo atrasado:"));
+        Assert.Equal("cabo atrasado: descartando até a próxima imagem completa (2 descartadas até agora)", warning);
+        await capture.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task KeepsTryingWhenFfmpegFailsToStart()
+    {
+        var log = new List<string>();
+        var starts = 0;
+        var runner = new FakeProcessRunner(_ => Interlocked.Increment(ref starts) <= 2
+            ? throw new Win32Exception(2, "arquivo não encontrado")
+            : new FakeProcess(1, AccessUnitReaderTests.Fixture()));
+        var capture = new FfmpegCapture(runner, "ffmpeg", ["-x"], Config, Collect(log), FastBackoff);
+        using var cts = new CancellationTokenSource(Generous);
+        Assert.True((await capture.NextAsync(cts.Token)).IsKeyframe);
+        await capture.DisposeAsync(); // não lança
+        Assert.True(runner.Started.Count >= 3, "deveria ter tentado de novo depois das 2 falhas");
+        Assert.Equal(2, Snapshot(log).Count(line => line.StartsWith("FFmpeg não iniciou:") && line.Contains("arquivo não encontrado")));
+        Assert.Equal(runner.Started.Count - 2, runner.Disposed);
+    }
+
+    [Fact]
+    public async Task KeepsTryingWhenReadingFails()
+    {
+        var log = new List<string>();
+        var starts = 0;
+        var runner = new FakeProcessRunner(_ => Interlocked.Increment(ref starts) == 1
+            ? new FakeProcess(1, stream: new FailingStream(new InvalidOperationException("pipe quebrado")))
+            : new FakeProcess(1, AccessUnitReaderTests.Fixture()));
+        var capture = new FfmpegCapture(runner, "ffmpeg", ["-x"], Config, Collect(log), FastBackoff);
+        using var cts = new CancellationTokenSource(Generous);
+        Assert.True((await capture.NextAsync(cts.Token)).IsKeyframe);
+        await capture.DisposeAsync();
+        Assert.Contains(Snapshot(log), line => line.StartsWith("leitura do FFmpeg falhou:") && line.Contains("pipe quebrado"));
+        Assert.Equal(runner.Started.Count, runner.Disposed);
+    }
+
+    [Fact]
+    public async Task DisposeReleasesWhoeverIsWaitingForAFrame()
+    {
+        // O FFmpeg sai sem mandar nada e a próxima tentativa demora 1 h: quem espera uma imagem fica esperando.
+        var runner = new FakeProcessRunner(_ => new FakeProcess(1));
+        var capture = new FfmpegCapture(runner, "ffmpeg", ["-x"], Config, _ => { }, NoRestart);
+        var waiting = capture.NextAsync(CancellationToken.None);
+        Assert.False(waiting.IsCompleted);
+        await capture.DisposeAsync().AsTask().WaitAsync(Generous);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting.WaitAsync(TimeSpan.FromSeconds(1)));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => capture.NextAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(1)));
+    }
+
+    [Fact]
+    public async Task DisposeStopsAProcessWhosePipeReadIgnoresCancellation()
+    {
+        var stdout = new BlockingStream();
+        var runner = new FakeProcessRunner(_ => new FakeProcess(0, stream: stdout));
+        var capture = new FfmpegCapture(runner, "ffmpeg", ["-x"], Config, _ => { }, FastBackoff);
+        await stdout.ReadStarted.Task.WaitAsync(Generous);
+        await capture.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Single(runner.Started);
+        Assert.Equal(1, runner.Disposed);
+        Assert.True(stdout.IsDisposed);
+    }
+
+    [Fact]
+    public async Task DisposeTwiceIsHarmless()
+    {
+        var capture = new FfmpegCapture(new FakeProcessRunner(_ => new FakeProcess(1)), "ffmpeg", ["-x"], Config, _ => { }, NoRestart);
+        await capture.DisposeAsync();
+        await capture.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task WaitGrowsBetweenFailuresAndResetsAfterFrames()
+    {
+        // Roteiro: 4 saídas sem imagens, 1 com imagens, 2 sem imagens; a 8ª fica aberta (fim do roteiro).
+        var log = new List<string>();
+        var last = new BlockingStream();
+        var starts = 0;
+        var runner = new FakeProcessRunner(_ => Interlocked.Increment(ref starts) switch
+        {
+            5 => new FakeProcess(1, AccessUnitReaderTests.Fixture()),
+            8 => new FakeProcess(0, stream: last),
+            _ => new FakeProcess(1),
+        });
+        TimeSpan[] waits = [TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(50)];
+        var capture = new FfmpegCapture(runner, "ffmpeg", ["-x"], Config, Collect(log), waits);
+        await last.ReadStarted.Task.WaitAsync(Generous);
+        // Toda espera é registrada antes do Start seguinte: com a 8ª lendo, as 7 esperas já estão no log.
+        var used = Snapshot(log)
+            .Where(line => line.StartsWith("FFmpeg: nova tentativa em "))
+            .Select(line => int.Parse(line["FFmpeg: nova tentativa em ".Length..].Split(' ')[0]))
+            .ToArray();
+        Assert.Equal(new[] { 10, 20, 50, 50, 10, 20, 50 }, used);
+        Assert.Equal(8, runner.Started.Count);
+        await capture.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3));
     }
 
     [Fact]

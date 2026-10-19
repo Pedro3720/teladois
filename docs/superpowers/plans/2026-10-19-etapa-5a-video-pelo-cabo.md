@@ -18,7 +18,7 @@ Especificação: `docs/superpowers/specs/2026-10-19-etapa-5a-video-pelo-cabo-des
 - Qualidade: até **60 fps**, `-bf 0`, `-g 120` (imagem completa a cada 2 s), `-b:v 12M -maxrate 20M -bufsize 4M`, `-bsf:v h264_metadata=aud=insert`, saída `-f h264 pipe:1`.
 - Ordem de compressões: `h264_amf` → `h264_qsv` → `h264_nvenc` → `h264_mf` → `libx264` (primeira que codificar 1 imagem vence).
 - Índice do `ddagrab` = índice de saída DXGI do adaptador 0 (neste PC: 0 = `\\.\DISPLAY2` 1920×1080 principal, 1 = `\\.\DISPLAY1` 1366×768). Padrão: primeiro monitor **não principal**, senão o principal.
-- Fila de envio: 3 imagens; cheia ⇒ descarta até a próxima completa. FFmpeg morreu ⇒ reinicia após 1 s, 2 s, 5 s (zera ao voltar a receber imagens).
+- Fila de envio limitada por tempo: descarta quando a imagem mais antiga esperando passa de 100 ms (rajadas curtas passam inteiras; teto de 240 imagens) e então descarta até a próxima completa; uma linha no log por episódio. FFmpeg morreu, não iniciou ou a leitura falhou ⇒ registra e reinicia após 1 s, 2 s, 5 s (zera ao voltar a receber imagens). Encerrar a captura sempre termina: mata o processo (destrava a leitura do pipe) e cancela quem espera imagem. *(Correção da Task 5, aprovada pelo usuário em 2026-10-19; substitui "3 imagens". O código da Task 5 abaixo é o original — o atual está em `FrameQueue.cs`/`FfmpegCapture.cs`.)*
 - iPhone: Segunda Tela em tela cheia, aspecto preservado, fundo preto, **sem escurecer** enquanto ativa; desconectar ⇒ Descanso em < 1 s.
 - Zero avisos: C# (`TreatWarningsAsErrors`) e Swift (`SWIFT_STRICT_CONCURRENCY: complete`).
 - Textos para o usuário em português; identificadores em inglês. Commits terminam com `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
@@ -32,7 +32,7 @@ Especificação: `docs/superpowers/specs/2026-10-19-etapa-5a-video-pelo-cabo-des
 | `windows/src/TelaDois.Core/Link/LinkSession.cs` | + envio de `CONFIG`/`VIDEO` a partir de um `IVideoFeed` |
 | `windows/src/TelaDois.Core/Video/H264.cs` | Tipos de NAL e varredura de códigos de início |
 | `windows/src/TelaDois.Core/Video/AccessUnitReader.cs` | Stream Annex-B → imagens (`AccessUnit`) |
-| `windows/src/TelaDois.Core/Video/FrameQueue.cs` | Fila curta com descarte até a próxima completa |
+| `windows/src/TelaDois.Core/Video/FrameQueue.cs` | Fila limitada por tempo (100 ms) com descarte até a próxima completa |
 | `windows/src/TelaDois.Core/Video/IVideoFeed.cs` | Contrato da fonte de vídeo da sessão |
 | `windows/src/TelaDois.Core/Video/EncoderProfiles.cs` | Perfis de compressão (filtro + opções) |
 | `windows/src/TelaDois.Core/Video/FfmpegArguments.cs` | Linha de comando do FFmpeg |

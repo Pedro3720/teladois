@@ -1,1 +1,23 @@
-{"0": "PC Link Session Core", "1": "Swift Link Protocol", "2": "Tray App Shell", "3": "C# Namespaces & Usings", "4": "Usbmux Plist Codec", "5": "Second Screen Architecture", "6": "Open-Meteo Weather", "7": "Fake PC Test Harness", "8": "Design Tokens & Icon", "9": "Clock Formatting", "10": "Encerrar Session Routine", "11": "iPhone UsbLink Listener", "12": "Prototype Package Config", "13": "App Settings & Root View", "14": ".NET Project Setup", "15": "Dim State Machine", "16": "Prototype Rest Mode JS", "17": "Install & Tunnel Decisions", "18": "Build & Distribution Decisions", "19": "iOS CI Workflows", "20": "Clock Page & Battery Ring", "21": "Roadmap & Core Decisions", "22": "Screen Brightness Control", "23": "SwiftUI Theme Views", "24": "Prototype Static Server", "25": "Screenshot Renamer", "26": "Battery Monitor", "27": "Link End Reasons", "28": "Swift Package Manifest", "29": "Usbmux Probe Script", "30": "Core Package Decision"}
+{
+  "0": "PC Link Session Core",
+  "1": "Swift Link Protocol",
+  "3": "C# Namespaces & Usings",
+  "4": "Usbmux Plist Codec",
+  "6": "Open-Meteo Weather",
+  "7": "Fake PC Test Harness",
+  "8": "Design Tokens & Icon",
+  "9": "Clock Formatting",
+  "10": "Encerrar Session Routine",
+  "12": "Prototype Package Config",
+  "14": ".NET Project Setup",
+  "16": "Prototype Rest Mode JS",
+  "17": "Install & Tunnel Decisions",
+  "20": "Clock Page & Battery Ring",
+  "21": "Roadmap & Core Decisions",
+  "23": "SwiftUI Theme Views",
+  "24": "Prototype Static Server",
+  "25": "Screenshot Renamer",
+  "28": "Swift Package Manifest",
+  "29": "Usbmux Probe Script",
+  "30": "Core Package Decision"
+}
