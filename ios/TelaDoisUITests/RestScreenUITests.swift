@@ -104,6 +104,46 @@ final class RestScreenUITests: XCTestCase {
         XCTAssertTrue(element(app, "link-status").waitForNonExistence(timeout: 3), "BYE deveria desconectar")
     }
 
+    private static func fixture() -> [UInt8] {
+        let url = Bundle(for: FakePC.self).url(forResource: "testsrc", withExtension: "h264")!
+        return [UInt8](try! Data(contentsOf: url))
+    }
+
+    /// Mantém a conexão viva (PING) por `seconds`, lendo o que o app mandar.
+    private func keepAlive(_ pc: FakePC, seconds: TimeInterval) {
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end {
+            pc.send(LinkProtocol.ping(1))
+            _ = pc.readFrame()
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+    }
+
+    func testVideoFromPcShowsSecondScreenAndKeepsScreenOn() {
+        let app = launch(dimSeconds: 2)
+        guard let pc = FakePC.connect() else { return XCTFail("o app não aceitou conexão em 127.0.0.1:7100") }
+        XCTAssertNotNil(pc.readFrame().flatMap(LinkProtocol.parseHello))
+
+        pc.send(LinkProtocol.config(width: 640, height: 296, fps: 30))
+        for unit in H264.accessUnits(in: Self.fixture()) {
+            pc.send(LinkProtocol.video(unit))
+        }
+        XCTAssertTrue(element(app, "second-screen").waitForExistence(timeout: 5), "deveria mostrar a Segunda Tela")
+
+        // Mais tempo que o escurecer (2 s): com vídeo, a tela não pode apagar.
+        keepAlive(pc, seconds: 3)
+        XCTAssertFalse(app.buttons["dim-overlay"].exists, "com vídeo a tela não escurece")
+        let lit = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in Self.maxBrightness(XCUIScreen.main.screenshot().image) > 0.3 },
+            object: nil
+        )
+        wait(for: [lit], timeout: 5)
+        attachScreenshot("05-segunda-tela")
+
+        pc.send(LinkProtocol.bye())
+        XCTAssertTrue(app.staticTexts["clock"].waitForExistence(timeout: 3), "BYE deveria voltar ao relógio")
+    }
+
     func testSilentPcIsDroppedAfterTimeout() {
         let app = launch()
         guard let pc = FakePC.connect() else { return XCTFail("o app não aceitou conexão em 127.0.0.1:7100") }
