@@ -41,6 +41,23 @@ sudo ln -sf /opt/xtool/AppRun /usr/local/bin/xtool
 echo "Apontando o xtool para o serviço da Apple do Windows..."
 echo 'export USBMUXD_SOCKET_ADDRESS=127.0.0.1:27015' | sudo tee /etc/profile.d/xtool-usbmuxd.sh >/dev/null
 
+# O `xtool auth login` baixa um APK de 142 MB da Apple sem retomar a conexão. Em alguns PCs a rede
+# espelhada do WSL corta downloads grandes ("remoteConnectionClosed"). Se a pasta `libs` já existir,
+# o xtool pula o download (XADIProvider.swift), então ela é preparada aqui com download retomável.
+LIBS="$HOME/.config/xtool/Anisette/libs"
+if [ ! -d "$LIBS" ]; then
+  echo "Preparando as bibliotecas do login da Apple (download retomável)..."
+  APK="$WORK/applemusic.apk"
+  APK_URL="https://apps.mzstatic.com/content/android-apple-music-apk/applemusic.apk"
+  for attempt in $(seq 1 30); do
+    curl -sS -fL -C - -o "$APK" "$APK_URL" && break
+    echo "  conexão cortada, retomando (tentativa $attempt)..."
+  done
+  unzip -q -o "$APK" lib/x86_64/libCoreADI.so lib/x86_64/libstoreservicescore.so -d "$WORK/apk"
+  mkdir -p "$(dirname "$LIBS")"
+  mv "$WORK/apk/lib/x86_64" "$LIBS"
+fi
+
 echo
 echo "xtool instalado em /opt/xtool (comando: xtool)."
 echo "Próximo passo: wsl -d Ubuntu -- bash -lc 'xtool auth login'"
