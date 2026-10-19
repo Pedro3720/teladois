@@ -8,7 +8,7 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     SWIFT_STRICT_CONCURRENCY: complete
-    MARKETING_VERSION: "0.2.0"
+    MARKETING_VERSION: "0.3.0"
     CURRENT_PROJECT_VERSION: "1"
 packages:
   TelaDoisCore:
@@ -38,6 +38,7 @@ targets:
     sources: [TelaDoisUITests]
     dependencies:
       - target: TelaDois
+      - package: TelaDoisCore
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

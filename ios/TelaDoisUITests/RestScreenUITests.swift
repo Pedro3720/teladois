@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import TelaDoisCore
 
 @MainActor
 final class RestScreenUITests: XCTestCase {
@@ -81,5 +82,35 @@ final class RestScreenUITests: XCTestCase {
         wait(for: [gone], timeout: 3)
         XCTAssertTrue(app.staticTexts["clock"].isHittable, "relógio deveria voltar a aparecer")
         attachScreenshot("03-acordado")
+    }
+
+    func testPcConnectionShowsStatusAndAnswersPing() {
+        let app = launch()
+        XCTAssertFalse(element(app, "link-status").exists, "sem PC não deve aparecer o aviso")
+        guard let pc = FakePC.connect() else { return XCTFail("o app não aceitou conexão em 127.0.0.1:7100") }
+
+        let hello = pc.readFrame().flatMap(LinkProtocol.parseHello)
+        XCTAssertEqual(hello?.version, LinkProtocol.version)
+        XCTAssertGreaterThan(hello?.width ?? 0, hello?.height ?? 0, "HELLO deve vir em paisagem")
+        XCTAssertTrue(element(app, "link-status").waitForExistence(timeout: 5), "deveria mostrar PC conectado")
+
+        pc.send(LinkProtocol.ping(42))
+        let pong = pc.readFrame()
+        XCTAssertEqual(pong?.messageType, .pong)
+        XCTAssertEqual(pong.flatMap(LinkProtocol.timestamp(of:)), 42)
+        attachScreenshot("04-pc-conectado")
+
+        pc.send(LinkProtocol.bye())
+        XCTAssertTrue(element(app, "link-status").waitForNonExistence(timeout: 3), "BYE deveria desconectar")
+    }
+
+    func testSilentPcIsDroppedAfterTimeout() {
+        let app = launch()
+        guard let pc = FakePC.connect() else { return XCTFail("o app não aceitou conexão em 127.0.0.1:7100") }
+        XCTAssertNotNil(pc.readFrame().flatMap(LinkProtocol.parseHello))
+        XCTAssertTrue(element(app, "link-status").waitForExistence(timeout: 5))
+        // Sem PING por mais de 3 s, o app fecha a conexão (recv devolve 0 antes dos 5 s do teste).
+        XCTAssertNil(pc.readFrame(), "o app deveria fechar a conexão de um PC calado")
+        XCTAssertTrue(element(app, "link-status").waitForNonExistence(timeout: 2))
     }
 }
