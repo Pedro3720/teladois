@@ -10,6 +10,7 @@ struct RestScreenView: View {
     @State private var battery: BatteryMonitor
     @State private var weather: WeatherProvider
     @State private var brightness = ScreenBrightness()
+    @State private var link = UsbLink()
     @Environment(\.scenePhase) private var scenePhase
     /// Diferença entre o relógio exibido e o real (só quando o teste fixa a hora).
     private let clockOffset: TimeInterval
@@ -35,6 +36,7 @@ struct RestScreenView: View {
                     temperature: weather.temperatureLabel,
                     batteryLevel: battery.level,
                     isCharging: battery.isCharging,
+                    isLinked: link.isConnected,
                     safeArea: geo.safeAreaInsets
                 )
                 if dim.isDimmed {
@@ -73,15 +75,19 @@ struct RestScreenView: View {
         .onAppear {
             battery.start()
             weather.start()
+            link.start()
             UIApplication.shared.isIdleTimerDisabled = true
         }
         .onChange(of: scenePhase) { _, phase in
             UIApplication.shared.isIdleTimerDisabled = (phase == .active)
             if phase == .active {
                 dim.touch(now: Date())
+                link.start()
             } else {
                 brightness.restore()
             }
+            // Só no fundo: puxar a Central de Controle (inactive) não derruba o PC.
+            if phase == .background { link.stop() }
         }
     }
 

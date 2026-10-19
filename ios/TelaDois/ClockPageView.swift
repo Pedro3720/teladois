@@ -7,6 +7,8 @@ struct ClockPageView: View {
     let temperature: String?
     let batteryLevel: Double
     let isCharging: Bool
+    /// PC conectado pelo cabo (Etapa 4: só o aviso; a Segunda Tela vem na Etapa 5).
+    let isLinked: Bool
     /// Área segura da tela (a página em si ignora a área segura e aplica as folgas manualmente).
     let safeArea: EdgeInsets
 
@@ -47,6 +49,13 @@ struct ClockPageView: View {
                             .frame(width: height * 0.22, height: height * 0.22)
                     }
                     Spacer(minLength: 0)
+                    if isLinked {
+                        Text("PC conectado")
+                            .font(.system(size: height * 0.06, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Theme.muted)
+                            .lineLimit(1)
+                            .accessibilityIdentifier("link-status")
+                    }
                 }
                 .frame(width: width * 0.34)
             }
