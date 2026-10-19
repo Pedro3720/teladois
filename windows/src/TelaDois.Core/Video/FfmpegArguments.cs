@@ -29,7 +29,7 @@ public static class FfmpegArguments
 
     private static List<string> Head(EncoderProfile profile, string inputGraph)
     {
-        var args = new List<string> { "-hide_banner", "-loglevel", "warning", "-f", "lavfi", "-i", inputGraph };
+        var args = new List<string> { "-nostdin", "-hide_banner", "-loglevel", "warning", "-f", "lavfi", "-i", inputGraph };
         if (profile.Filter.Length > 0)
         {
             args.AddRange(["-vf", profile.Filter]);

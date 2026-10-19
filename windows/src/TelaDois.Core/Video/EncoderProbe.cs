@@ -15,6 +15,7 @@ public sealed class EncoderProbe(IProcessRunner runner, string ffmpegPath, Actio
         }
         foreach (var profile in EncoderProfiles.Candidates)
         {
+            ct.ThrowIfCancellationRequested();
             await using var process = runner.Start(ffmpegPath, FfmpegArguments.Probe(profile, outputIndex));
             int code;
             try

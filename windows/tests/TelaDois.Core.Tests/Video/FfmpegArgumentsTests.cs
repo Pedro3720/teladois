@@ -17,7 +17,7 @@ public class FfmpegArgumentsTests
     {
         var args = FfmpegArguments.ForMonitor(Qsv, 1, 60);
         Assert.Equal(
-            "-hide_banner -loglevel warning -f lavfi -i ddagrab=output_idx=1:framerate=60:draw_mouse=1 " +
+            "-nostdin -hide_banner -loglevel warning -f lavfi -i ddagrab=output_idx=1:framerate=60:draw_mouse=1 " +
             "-vf hwmap=derive_device=qsv,format=qsv -c:v h264_qsv -low_power 0 -look_ahead 0 -async_depth 1 " +
             "-bf 0 -g 120 -b:v 12M -maxrate 20M -bufsize 4M -bsf:v h264_metadata=aud=insert -f h264 pipe:1",
             string.Join(' ', args));

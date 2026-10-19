@@ -24,6 +24,7 @@ public sealed class SystemProcessRunner : IProcessRunner
     {
         private readonly Process _process;
         private readonly Queue<string> _errors = new();
+        private bool _disposed;
 
         public SystemProcess(string fileName, IReadOnlyList<string> arguments)
         {
@@ -54,8 +55,16 @@ public sealed class SystemProcessRunner : IProcessRunner
                     }
                 }
             };
-            _process.Start();
-            _process.BeginErrorReadLine();
+            try
+            {
+                _process.Start();
+                _process.BeginErrorReadLine();
+            }
+            catch
+            {
+                _process.Dispose();
+                throw;
+            }
         }
 
         public Stream Output => _process.StandardOutput.BaseStream;
@@ -79,6 +88,11 @@ public sealed class SystemProcessRunner : IProcessRunner
 
         public async ValueTask DisposeAsync()
         {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
             try
             {
                 if (!_process.HasExited)
@@ -86,7 +100,7 @@ public sealed class SystemProcessRunner : IProcessRunner
                     _process.Kill(entireProcessTree: true);
                 }
             }
-            catch (InvalidOperationException)
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or AggregateException)
             {
             }
             try

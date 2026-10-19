@@ -23,12 +23,15 @@ internal sealed class FakeProcessRunner : IProcessRunner
     }
 }
 
-internal sealed class FakeProcess(int exitCode, byte[]? output = null, string errors = "") : IRunningProcess
+internal sealed class FakeProcess(int exitCode, byte[]? output = null, string errors = "", bool hangs = false) : IRunningProcess
 {
     public Action? OnDispose;
     public Stream Output { get; } = new MemoryStream(output ?? []);
     public string RecentErrors => errors;
-    public Task<int> WaitForExitAsync(CancellationToken ct) => Task.FromResult(exitCode);
+
+    /// <summary>Com <c>hangs</c>, a espera só termina quando o token é cancelado (processo travado).</summary>
+    public Task<int> WaitForExitAsync(CancellationToken ct) =>
+        hangs ? Task.Delay(Timeout.Infinite, ct).ContinueWith(_ => exitCode, TaskContinuationOptions.OnlyOnRanToCompletion) : Task.FromResult(exitCode);
 
     public ValueTask DisposeAsync()
     {
