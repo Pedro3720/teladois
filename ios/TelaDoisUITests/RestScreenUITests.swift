@@ -113,4 +113,43 @@ final class RestScreenUITests: XCTestCase {
         XCTAssertNil(pc.readFrame(), "o app deveria fechar a conexão de um PC calado")
         XCTAssertTrue(element(app, "link-status").waitForNonExistence(timeout: 2))
     }
+
+    func testVideoFromPcShowsSecondScreenAndByeReturnsToClock() throws {
+        let app = launch(dimSeconds: 4)
+        guard let pc = FakePC.connect() else { return XCTFail("o app não aceitou conexão em 127.0.0.1:7100") }
+        XCTAssertNotNil(pc.readFrame().flatMap(LinkProtocol.parseHello))
+
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "bars-640x360", withExtension: "h264"))
+        let units = H264Parser.accessUnits(in: [UInt8](try Data(contentsOf: url)))
+        XCTAssertEqual(units.count, 30)
+        pc.send(LinkProtocol.config(width: 640, height: 360, fps: 30))
+        for (index, unit) in units.enumerated() {
+            pc.send(LinkProtocol.video(keyframe: index == 0, timestamp: UInt64(index) * 33_333, accessUnit: unit))
+        }
+
+        // O app derruba o PC após 3 s sem notícias: as esperas abaixo continuam mandando PING.
+        XCTAssertTrue(element(app, "second-screen").waitForExistence(timeout: 2), "deveria mostrar a Segunda Tela")
+        XCTAssertFalse(app.staticTexts["clock"].exists, "o relógio some na Segunda Tela")
+        // Barras coloridas decodificadas: a tela não pode estar toda preta.
+        var decoded = false
+        for _ in 0..<10 where !decoded {
+            pc.send(LinkProtocol.ping(1))
+            decoded = Self.maxBrightness(XCUIScreen.main.screenshot().image) > 0.5
+            if !decoded { Thread.sleep(forTimeInterval: 0.5) }
+        }
+        XCTAssertTrue(decoded, "as barras coloridas deveriam aparecer")
+        attachScreenshot("05-segunda-tela")
+
+        // Mantém o PC "vivo" além do tempo de escurecer: a Segunda Tela não escurece.
+        for _ in 0..<6 {
+            Thread.sleep(forTimeInterval: 1)
+            pc.send(LinkProtocol.ping(1))
+        }
+        XCTAssertFalse(app.buttons["dim-overlay"].exists, "a Segunda Tela não deve escurecer")
+
+        pc.send(LinkProtocol.bye())
+        XCTAssertTrue(app.staticTexts["clock"].waitForExistence(timeout: 3), "BYE deveria voltar ao relógio")
+        XCTAssertFalse(element(app, "second-screen").exists)
+        attachScreenshot("06-volta-descanso")
+    }
 }

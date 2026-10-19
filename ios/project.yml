@@ -35,7 +35,11 @@ targets:
   TelaDoisUITests:
     type: bundle.ui-testing
     platform: iOS
-    sources: [TelaDoisUITests]
+    sources:
+      - path: TelaDoisUITests
+        excludes: ["Fixtures/**"]
+      - path: TelaDoisUITests/Fixtures
+        buildPhase: resources
     dependencies:
       - target: TelaDois
       - package: TelaDoisCore
