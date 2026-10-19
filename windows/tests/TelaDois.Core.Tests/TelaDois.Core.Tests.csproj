@@ -19,6 +19,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\..\..\ios\Packages\TelaDoisCore\Tests\TelaDoisCoreTests\Fixtures\bars-64x64.h264" Link="Fixtures\bars-64x64.h264" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\TelaDois.Core\TelaDois.Core.csproj" />
   </ItemGroup>
 
