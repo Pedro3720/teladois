@@ -1,6 +1,28 @@
 # Instalar o TelaDois no iPhone (sem conta paga)
 
-Este guia usa o **Sideloadly** no Windows e um **Apple ID grátis**.
+Desde 2026-10-18 o jeito principal é o **xtool**, que roda no Ubuntu do WSL e usa o serviço da Apple do Windows. O **Sideloadly** (mais abaixo) fica como alternativa: naquele dia o login dele na Apple falhou com um erro 404.
+
+## Com o xtool (principal)
+
+**Uma vez só** (já feito no PC do `D:\Downloads\Teladois`):
+1. iTunes e iCloud versão "web" (veja abaixo), WSL com Ubuntu e, em `%USERPROFILE%\.wslconfig`:
+   ```
+   [wsl2]
+   networkingMode=mirrored
+   ```
+2. No Ubuntu: xtool 1.22.2 (AppImage de https://github.com/xtool-org/xtool extraído em `/opt/xtool`, link em `/usr/local/bin/xtool`), `sudo apt install zip unzip` e o arquivo `/etc/profile.d/xtool-usbmuxd.sh` com `export USBMUXD_SOCKET_ADDRESS=127.0.0.1:27015`.
+3. `xtool auth login` no Ubuntu, com o seu Apple ID. Você digita a senha e o código de 6 dígitos.
+4. Na primeira instalação o xtool pode pedir para **revogar o certificado** antigo (o do Sideloadly). Respondendo `yes`, os apps instalados pelo Sideloadly param de abrir até serem reinstalados.
+
+**A cada nova versão** (iPhone no cabo e desbloqueado), no PowerShell:
+```
+wsl -d Ubuntu -- bash -lc 'xtool install --usb /mnt/d/Downloads/Teladois/builds/<pasta>/TelaDois.ipa'
+```
+O `bash -lc` é obrigatório: sem ele o xtool não acha o serviço da Apple e fica em "Waiting for device to be connected...". O fim certo é `Successfully installed!`. Se aparecer "Desenvolvedor não confiável", confie de novo em Ajustes → Geral → VPN e Gerenciamento de Dispositivos.
+
+## Com o Sideloadly (alternativa)
+
+Usa o **Sideloadly** no Windows e um **Apple ID grátis**.
 
 ## Uma vez só
 

@@ -158,7 +158,7 @@ Cada etapa termina em algo funcionando e verificado.
 | 1 | Design | Ícone (Canva), tokens de cor/tipografia, protótipo HTML aprovado |
 | 2 | Descanso v1 | Relógio, data, bateria, clima, escurecer em 60 s e acender com 1 toque — testado no CI e no iPhone — concluída no CI em 2026-10-18; instalada e aberta no iPhone em 2026-10-18 (build do `9cce6d6`) |
 | 3 | Spotify | Página Música com capa, progresso e controles |
-| 4 | Túnel USB | App do PC detecta o iPhone e troca `HELLO`/`PING` pelo cabo |
+| 4 | Túnel USB | App do PC detecta o iPhone e troca `HELLO`/`PING` pelo cabo — concluída em 2026-10-18; testada no iPhone pelo cabo (latência de poucos ms, reconexão automática) |
 | 5 | Segunda Tela | Monitor virtual + transmissão + desconexão automática |
 | 6 | Acabamento | Latência ajustada, ícone de bandeja completo, iniciar com o Windows, revisão de segurança |
 
