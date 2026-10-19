@@ -98,6 +98,7 @@ App de iPhone que (1) vira **segunda tela do PC Windows via cabo USB** e (2) tem
 
 **Bloqueio**
 - Nenhum. O cabo de dados chegou; o PC tem iTunes 12.13 64-bit (versão web), iCloud web, Apple Mobile Device Support 20 e Sideloadly.
+- PC `C:\Pedro\Arquivos Pedro\Aplicativo celular` (2026-10-19): graphify, uv 0.13.1 e .NET 10 SDK instalados (33 testes do PC passando). WSL instalado e `.wslconfig` com `networkingMode=mirrored`, mas **falta reiniciar**, abrir o Ubuntu e criar o usuário Linux, instalar o xtool 1.22.2 e fazer `xtool auth login`. Até lá, instalar no iPhone por este PC só pelo Sideloadly.
 
 **Próximos passos**
 1. Etapa 5 — Segunda Tela (monitor virtual + FFmpeg + vídeo + desconexão automática). Já levantado: o Virtual Display Driver (VirtualDrivers/Virtual-Display-Driver, release 25.7.23) aceita comandos UTF-16 no pipe `\\.\pipe\MTTVirtualDisplayPipe` (`SETDISPLAYCOUNT n`, `RELOAD_DRIVER`, `PING`); resoluções em `C:\VirtualDisplayDriver\vdd_settings.xml`. O pipe aceita qualquer usuário do PC (`D:(A;;GA;;;WD)`) — anotar na revisão de segurança. GPU do PC: AMD Radeon → `h264_amf`.
@@ -153,7 +154,11 @@ Para tê-los também no CLI puro (os marketplaces já estão registrados neste P
 | Projeto (`.claude/skills`) | `encerrar` — comando **`/encerrar`**: rotina de fim de sessão (atualiza este CLAUDE.md, verifica o ambiente de verdade, confere segredos, commit e push, lista o que falta no outro PC). Vai pelo Git, então funciona nos dois PCs |
 
 - **`reverse-engineer-anything`**: não vale mover para o projeto — é genérica e depende do REA instalado globalmente (`npm install -g rea-agents`); copie a pasta `~/.claude/skills/reverse-engineer-anything` para o outro PC.
-- **`graphify`** (mapa do código em grafo para navegar no projeto gastando menos tokens; comando `/graphify .`): o pacote certo é o **`graphifyy`** (dois "y") do PyPI, repositório oficial https://github.com/Graphify-Labs/graphify. O pacote npm `graphify` **não tem relação** com ele, não use. Instalação (uma vez por PC): `winget install --id astral-sh.uv -e` → terminal novo → `uv tool install graphifyy` → `uv tool update-shell` → `graphify install --platform claude`. Isso cria `~/.claude/skills/graphify/` e o `~/.claude/CLAUDE.md` global que registra a skill (sem hooks; hooks só com `--project`). Instalado em 2026-10-18 (versão 0.9.92) no PC onde o projeto fica em `D:\Downloads\Teladois`; falta instalar no outro PC.
+- **`graphify`** (mapa do código em grafo para navegar no projeto gastando menos tokens; comando `/graphify .`): o pacote certo é o **`graphifyy`** (dois "y") do PyPI, repositório oficial https://github.com/Graphify-Labs/graphify. O pacote npm `graphify` **não tem relação** com ele, não use. Instalação (uma vez por PC): `winget install --id astral-sh.uv -e` → terminal novo → `uv tool install graphifyy` → `uv tool update-shell` → `graphify install --platform claude`. Isso cria `~/.claude/skills/graphify/` e o `~/.claude/CLAUDE.md` global que registra a skill (sem hooks; hooks só com `--project`). Instalado em 2026-10-18 (versão 0.9.92) no PC onde o projeto fica em `D:\Downloads\Teladois` e em 2026-10-19 no PC onde fica em `C:\Pedro\Arquivos Pedro\Aplicativo celular`. Neste segundo PC o Windows (Controle de Aplicativos) **bloqueia o `graphify.exe`** criado pelo uv (não é assinado); a skill funciona assim mesmo, porque chama `python -m graphify` pelo Python do `uv tool run --from graphifyy`. Para rodar à mão: `uv tool run --from graphifyy python -m graphify <comando>`. Não desligue a proteção do Windows.
+
+### Armadilhas de instalação já vistas
+- `uv` antigo (0.11.x) travava ao abrir ("capacity overflow"): `winget upgrade --id astral-sh.uv -e --force`.
+- `dotnet test` com `NU1100` ("Não foi possível resolver xunit…"): o NuGet do usuário estava sem nenhuma fonte. Corrigir com `dotnet nuget add source https://api.nuget.org/v3/index.json -n nuget.org`.
 
 ### MCP servers
 | Nome | Para quê | Como configurar |
