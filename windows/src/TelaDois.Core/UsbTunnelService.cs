@@ -124,8 +124,9 @@ public sealed class UsbTunnelService(UsbmuxClient usbmux, LinkSessionOptions opt
             {
                 return;
             }
-            catch (Exception e) when (e is IOException or InvalidDataException)
+            catch (Exception e)
             {
+                // Qualquer outra falha (protocolo, vídeo, quem acompanha o estado): registra e tenta de novo.
                 log($"falha no túnel: {e.Message}");
             }
             try
@@ -139,7 +140,8 @@ public sealed class UsbTunnelService(UsbmuxClient usbmux, LinkSessionOptions opt
         }
     }
 
-    private static async Task StopAsync((int Id, CancellationTokenSource Cts, Task Task) device)
+    /// <summary>Para o iPhone e espera a tarefa dele; nunca lança (uma falha dela só vai para o registro).</summary>
+    private async Task StopAsync((int Id, CancellationTokenSource Cts, Task Task) device)
     {
         device.Cts.Cancel();
         try
@@ -148,6 +150,10 @@ public sealed class UsbTunnelService(UsbmuxClient usbmux, LinkSessionOptions opt
         }
         catch (OperationCanceledException)
         {
+        }
+        catch (Exception e)
+        {
+            log($"falha no túnel: {e.Message}");
         }
         device.Cts.Dispose();
     }

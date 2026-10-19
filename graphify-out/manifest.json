@@ -252,10 +252,10 @@
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Link/LinkSession.cs": {
-    "mtime": 1792408567.314397,
-    "seen": 1792412055.3797631,
-    "ast_hash": "c36b0d41dce0e34db6c64b9a84c68b58",
-    "semantic_hash": "c36b0d41dce0e34db6c64b9a84c68b58"
+    "mtime": 1792431201.3628142,
+    "seen": 1792431302.0381908,
+    "ast_hash": "9e4e2255c45cb61c3bdd76820148b527",
+    "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/TelaDois.Core.csproj": {
     "mtime": 1792426842.90276,
@@ -264,16 +264,16 @@
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/TunnelStatusText.cs": {
-    "mtime": 1792408567.3353963,
-    "seen": 1792412055.379767,
-    "ast_hash": "262723f8819a8ce8555a62973f138131",
-    "semantic_hash": "262723f8819a8ce8555a62973f138131"
+    "mtime": 1792430169.1870956,
+    "seen": 1792431302.0381951,
+    "ast_hash": "9fcbc4ca52d9a009b3679ca5903f1c69",
+    "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/UsbTunnelService.cs": {
-    "mtime": 1792408567.3385835,
-    "seen": 1792412055.3797686,
-    "ast_hash": "f0b0f8b52fd9334e9ce4120eaf8b152f",
-    "semantic_hash": "f0b0f8b52fd9334e9ce4120eaf8b152f"
+    "mtime": 1792431201.4407227,
+    "seen": 1792431302.038197,
+    "ast_hash": "9d12a3b826a82ded9ef2f591d4cc061b",
+    "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Usbmux/Plist.cs": {
     "mtime": 1792408567.34346,
@@ -312,22 +312,22 @@
     "semantic_hash": "8a6aee69772cd08603625695a51d43eb"
   },
   "windows/src/TelaDois.Tray/TelaDois.Tray.csproj": {
-    "mtime": 1792408567.4255414,
-    "seen": 1792412055.3797793,
-    "ast_hash": "4b37e13f5ca36723ad97465b2b9be99c",
-    "semantic_hash": "4b37e13f5ca36723ad97465b2b9be99c"
+    "mtime": 1792430227.9605699,
+    "seen": 1792431302.0382335,
+    "ast_hash": "7a7416c3a9dba3f18f0abd4536e989ed",
+    "semantic_hash": ""
   },
   "windows/src/TelaDois.Tray/TrayContext.cs": {
-    "mtime": 1792408567.4361477,
-    "seen": 1792412055.3797808,
-    "ast_hash": "abdea3aa6a8b5ff42f117e2103a4037e",
-    "semantic_hash": "abdea3aa6a8b5ff42f117e2103a4037e"
+    "mtime": 1792431219.068141,
+    "seen": 1792431302.0382354,
+    "ast_hash": "82260580b5b186bb77a0ec97b1ff0105",
+    "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/Fakes/FakePhone.cs": {
-    "mtime": 1792408567.506815,
-    "seen": 1792412055.3797824,
-    "ast_hash": "81152e3db40f7ddbda5887b34f3968f7",
-    "semantic_hash": "81152e3db40f7ddbda5887b34f3968f7"
+    "mtime": 1792431031.5100951,
+    "seen": 1792431302.038239,
+    "ast_hash": "838cb060c10ac38d4b55cae2f2587f61",
+    "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/Fakes/FakeUsbmuxd.cs": {
     "mtime": 1792408567.5088305,
@@ -348,10 +348,10 @@
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/LinkSessionTests.cs": {
-    "mtime": 1792408567.5224345,
-    "seen": 1792412055.3797886,
-    "ast_hash": "82785e9fd2f007a4905adfa6089500d1",
-    "semantic_hash": "82785e9fd2f007a4905adfa6089500d1"
+    "mtime": 1792431099.0639157,
+    "seen": 1792431302.0382621,
+    "ast_hash": "d4b894ea72358e6d9508967620d9539a",
+    "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/PlistTests.cs": {
     "mtime": 1792408567.5236883,
@@ -366,10 +366,10 @@
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/UsbTunnelServiceTests.cs": {
-    "mtime": 1792408567.527652,
-    "seen": 1792412055.3797932,
-    "ast_hash": "298600f4b87fc40853821a84fec77cc3",
-    "semantic_hash": "298600f4b87fc40853821a84fec77cc3"
+    "mtime": 1792431048.3350205,
+    "seen": 1792431302.0382693,
+    "ast_hash": "f9af46cd23b71c4c3ae72fc7c4e4b175",
+    "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/UsbmuxTests.cs": {
     "mtime": 1792408567.5299287,
@@ -597,6 +597,30 @@
     "mtime": 1792429584.0976098,
     "seen": 1792429618.707968,
     "ast_hash": "397f5d1e84a6b2dd10259016f99a848e",
+    "semantic_hash": ""
+  },
+  "windows/src/TelaDois.Core/Video/VideoFeedFactory.cs": {
+    "mtime": 1792431210.1080618,
+    "seen": 1792431302.038228,
+    "ast_hash": "73abd80efe1e5e80992290bb3a250f89",
+    "semantic_hash": ""
+  },
+  "windows/src/TelaDois.Tray/TraySettings.cs": {
+    "mtime": 1792430227.856733,
+    "seen": 1792431302.038237,
+    "ast_hash": "0f1cf89707f5e2e0ecc5f8922303e9ac",
+    "semantic_hash": ""
+  },
+  "windows/tests/TelaDois.Core.Tests/TunnelStatusTextTests.cs": {
+    "mtime": 1792430147.8073294,
+    "seen": 1792431302.0382671,
+    "ast_hash": "aeef6014f9981e72d31c65d7fd8aaf68",
+    "semantic_hash": ""
+  },
+  "windows/tests/TelaDois.Core.Tests/Video/VideoFeedFactoryTests.cs": {
+    "mtime": 1792431074.4748483,
+    "seen": 1792431302.038286,
+    "ast_hash": "cee900ff33361eb36546460f8657fe22",
     "semantic_hash": ""
   }
 }

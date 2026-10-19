@@ -109,8 +109,93 @@ public class UsbTunnelServiceTests
         Assert.Single(log, line => line.StartsWith("usbmuxd indisponível", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task KeepsTunnelAndReconnectsWhenVideoFails()
+    {
+        await using var usbmuxd = new FakeUsbmuxd();
+        var sessions = 0;
+        var second = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        usbmuxd.Phone = async (stream, ct) =>
+        {
+            if (Interlocked.Increment(ref sessions) == 2)
+            {
+                second.TrySetResult();
+            }
+            await FakePhone.ByeAfterPongsAsync(stream, 3, ct);
+        };
+        var log = new ConcurrentQueue<string>();
+        var service = new UsbTunnelService(new UsbmuxClient(usbmuxd.Endpoint), Fast, log.Enqueue,
+            (_, _) => throw new InvalidOperationException("nenhuma compressão H.264 funcionou neste PC"))
+        {
+            Retry = TimeSpan.FromMilliseconds(100),
+        };
+        var measured = WaitFor(service, s => s is { State: TunnelState.Connected, RoundTrip: not null });
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var run = service.RunAsync(cts.Token);
+
+        Assert.Null((await measured.WaitAsync(cts.Token)).Video);
+        await second.Task.WaitAsync(cts.Token);
+        cts.Cancel();
+        await run;
+        Assert.Contains(log, line => line.StartsWith("sessão encerrada", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RetriesAfterUnexpectedSessionFailure()
+    {
+        await using var usbmuxd = new FakeUsbmuxd();
+        var log = new ConcurrentQueue<string>();
+        var service = Create(usbmuxd.Endpoint, log);
+        var connections = 0;
+        service.StatusChanged += status =>
+        {
+            if (status.State == TunnelState.Connected && status.RoundTrip is null && Interlocked.Increment(ref connections) == 1)
+            {
+                throw new InvalidOperationException("falha inesperada");
+            }
+        };
+        var measured = WaitFor(service, s => s is { State: TunnelState.Connected, RoundTrip: not null });
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var run = service.RunAsync(cts.Token);
+
+        await measured.WaitAsync(cts.Token);
+        cts.Cancel();
+        await run;
+        Assert.Contains("falha no túnel: falha inesperada", log);
+    }
+
+    [Fact]
+    public async Task SurvivesDeviceThatFailedWhenCableIsRemoved()
+    {
+        await using var usbmuxd = new FakeUsbmuxd();
+        var log = new ConcurrentQueue<string>();
+        var service = Create(usbmuxd.Endpoint, log);
+        var failed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.StatusChanged += status =>
+        {
+            if (status.State == TunnelState.WaitingForApp && !failed.Task.IsCompleted)
+            {
+                failed.TrySetResult();
+                throw new InvalidOperationException("falha inesperada");
+            }
+        };
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var run = service.RunAsync(cts.Token);
+        await failed.Task.WaitAsync(cts.Token);
+
+        var waiting = WaitFor(service, s => s.State == TunnelState.WaitingForIPhone);
+        await usbmuxd.SendEventAsync(FakeUsbmuxd.Detached(1));
+        await waiting.WaitAsync(cts.Token);
+        var connected = WaitFor(service, s => s.State == TunnelState.Connected);
+        await usbmuxd.SendEventAsync(FakeUsbmuxd.Attached(1));
+        await connected.WaitAsync(cts.Token);
+        cts.Cancel();
+        await run;
+        Assert.Contains(log, line => line.StartsWith("falha no túnel: falha inesperada", StringComparison.Ordinal));
+    }
+
     [Theory]
-    [InlineData(TunnelState.ServiceMissing, "TelaDois: falta o Apple Mobile Device Service")]
+    [InlineData(TunnelState.ServiceMissing,"TelaDois: falta o Apple Mobile Device Service")]
     [InlineData(TunnelState.WaitingForIPhone, "TelaDois: conecte o iPhone no cabo")]
     [InlineData(TunnelState.WaitingForApp, "TelaDois: abra o app no iPhone")]
     public void DescribesWaitingStates(TunnelState state, string text) =>

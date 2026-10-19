@@ -13,6 +13,7 @@ internal sealed class TrayContext : ApplicationContext
     private readonly CancellationTokenSource _cts = new();
     private readonly TraySettings _settings = TraySettings.Load();
     private TunnelState? _lastState;
+    private int _ffmpegWarned;
 
     public TrayContext()
     {
@@ -33,8 +34,15 @@ internal sealed class TrayContext : ApplicationContext
 
         var ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
         var video = new VideoFeedFactory(FfmpegLocator.Find(), new SystemProcessRunner(), DisplayCatalog.Enumerate, () => _settings.Monitor, _log.Write);
-        video.FfmpegMissing += () => ui.Post(_ => _icon.ShowBalloonTip(10000, "TelaDois",
-            "Para a Segunda Tela, instale o FFmpeg: winget install Gyan.FFmpeg", ToolTipIcon.Warning), null);
+        video.FfmpegMissing += () =>
+        {
+            // Uma vez por execução: a fábrica avisa a cada conexão, o balão não precisa repetir.
+            if (Interlocked.Exchange(ref _ffmpegWarned, 1) == 0)
+            {
+                ui.Post(_ => _icon.ShowBalloonTip(10000, "TelaDois",
+                    "Para a Segunda Tela, instale o FFmpeg (winget install Gyan.FFmpeg) e reinicie o TelaDois", ToolTipIcon.Warning), null);
+            }
+        };
         var service = new UsbTunnelService(new UsbmuxClient(UsbmuxClient.DefaultEndpoint), LinkSessionOptions.Default, _log.Write, video.OpenAsync);
         service.StatusChanged += status => ui.Post(_ => Show(status), null);
         _log.Write("TelaDois iniciado");
@@ -75,7 +83,14 @@ internal sealed class TrayContext : ApplicationContext
             item.Click += (_, _) =>
             {
                 _settings.Monitor = output.DeviceName;
-                _settings.Save();
+                try
+                {
+                    _settings.Save();
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    _log.Write($"não deu para salvar a escolha do monitor: {e.Message}");
+                }
                 _log.Write($"monitor transmitido: {output.DeviceName} (vale na próxima conexão)");
             };
             menu.DropDownItems.Add(item);

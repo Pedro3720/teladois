@@ -1,8 +1,6 @@
 {
   "0": "PC Link Session Core",
   "1": "Swift Link Protocol",
-  "3": "C# Namespaces & Usings",
-  "4": "Usbmux Plist Codec",
   "6": "Open-Meteo Weather",
   "7": "Fake PC Test Harness",
   "8": "Design Tokens & Icon",
@@ -16,7 +14,6 @@
   "21": "Roadmap & Core Decisions",
   "23": "SwiftUI Theme Views",
   "24": "Prototype Static Server",
-  "25": "Screenshot Renamer",
   "28": "Swift Package Manifest",
   "29": "Usbmux Probe Script",
   "30": "Core Package Decision"

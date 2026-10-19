@@ -11,7 +11,24 @@ public sealed class VideoFeedFactory(string? ffmpegPath, IProcessRunner runner, 
 
     public event Action? FfmpegMissing;
 
+    /// <summary>
+    /// A captura, ou <c>null</c> sem FFmpeg, sem monitor ou com qualquer falha (registrada no log): o vídeo nunca
+    /// derruba o túnel. Só o cancelamento de <c>ct</c> sai como exceção.
+    /// </summary>
     public async Task<IVideoFeed?> OpenAsync(HelloInfo hello, CancellationToken ct)
+    {
+        try
+        {
+            return await TryOpenAsync(hello, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            log($"Segunda Tela indisponível: {e.Message}");
+            return null;
+        }
+    }
+
+    private async Task<IVideoFeed?> TryOpenAsync(HelloInfo hello, CancellationToken ct)
     {
         if (ffmpegPath is null || _probe is null)
         {
