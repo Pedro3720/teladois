@@ -116,6 +116,8 @@ final class UsbLink {
                 case .close:
                     disconnect()
                     return false
+                case .startVideo, .video:
+                    break // a Segunda Tela entra na próxima tarefa
                 }
             }
         }

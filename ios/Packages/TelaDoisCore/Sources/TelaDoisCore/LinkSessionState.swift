@@ -6,6 +6,8 @@ public struct LinkSessionState: Sendable {
     public enum Action: Equatable, Sendable {
         case send(LinkFrame)
         case close
+        case startVideo(LinkConfig)
+        case video([UInt8])
     }
 
     public let timeout: TimeInterval
@@ -23,6 +25,10 @@ public struct LinkSessionState: Sendable {
             return LinkProtocol.timestamp(of: frame).map { [.send(LinkProtocol.pong($0))] } ?? []
         case .bye:
             return [.close]
+        case .config:
+            return LinkProtocol.parseConfig(frame).map { [.startVideo($0)] } ?? []
+        case .video:
+            return [.video(frame.payload)]
         default:
             return []
         }

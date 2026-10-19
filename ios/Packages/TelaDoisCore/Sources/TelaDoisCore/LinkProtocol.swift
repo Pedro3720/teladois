@@ -40,6 +40,18 @@ public struct LinkHello: Equatable, Sendable {
     }
 }
 
+public struct LinkConfig: Equatable, Sendable {
+    public let width: UInt32
+    public let height: UInt32
+    public let fps: UInt16
+
+    public init(width: UInt32, height: UInt32, fps: UInt16) {
+        self.width = width
+        self.height = height
+        self.fps = fps
+    }
+}
+
 public enum LinkProtocol {
     public static let version: UInt16 = 1
     public static let port: UInt16 = 7100
@@ -60,6 +72,25 @@ public enum LinkProtocol {
             height: readBigEndian(bytes[6..<10])
         )
     }
+
+    public static func config(width: UInt32, height: UInt32, fps: UInt16) -> LinkFrame {
+        LinkFrame(.config, payload: bigEndianBytes(width) + bigEndianBytes(height) + bigEndianBytes(fps))
+    }
+
+    public static func parseConfig(_ frame: LinkFrame) -> LinkConfig? {
+        guard frame.messageType == .config, frame.payload.count == 10 else { return nil }
+        let bytes = frame.payload[...]
+        return LinkConfig(
+            width: readBigEndian(bytes[0..<4]),
+            height: readBigEndian(bytes[4..<8]),
+            fps: readBigEndian(bytes[8..<10])
+        )
+    }
+
+    /// Um access unit H.264 Annex-B.
+    public static func video(_ accessUnit: [UInt8]) -> LinkFrame { LinkFrame(.video, payload: accessUnit) }
+
+    public static func keyframeRequest() -> LinkFrame { LinkFrame(.keyframeRequest) }
 
     public static func ping(_ timestamp: UInt64) -> LinkFrame {
         LinkFrame(.ping, payload: bigEndianBytes(timestamp))
