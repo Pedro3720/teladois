@@ -117,6 +117,11 @@ public class UsbTunnelServiceTests
         Assert.Equal(text, TunnelStatusText.For(new TunnelStatus(state)));
 
     [Fact]
+    public void DescribesSecondScreen() =>
+        Assert.Equal("TelaDois: segunda tela · 2556×1179 · 60 fps · 12 ms",
+            TunnelStatusText.For(new TunnelStatus(TunnelState.Connected, new HelloInfo(1, 2556, 1179), TimeSpan.FromMilliseconds(12), new VideoConfig(2556, 1179, 60))));
+
+    [Fact]
     public void DescribesConnectedState()
     {
         var hello = new HelloInfo(1, 2556, 1179);

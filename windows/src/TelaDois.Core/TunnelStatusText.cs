@@ -8,6 +8,9 @@ public static class TunnelStatusText
         TunnelState.ServiceMissing => "TelaDois: falta o Apple Mobile Device Service",
         TunnelState.WaitingForIPhone => "TelaDois: conecte o iPhone no cabo",
         TunnelState.WaitingForApp => "TelaDois: abra o app no iPhone",
+        _ when status is { RoundTrip: { } rtt, Video: { } video } =>
+            $"TelaDois: segunda tela · {video.Width}×{video.Height} · {video.Fps} fps · {Math.Round(rtt.TotalMilliseconds):0} ms",
+        _ when status.Video is { } video => $"TelaDois: segunda tela · {video.Width}×{video.Height} · {video.Fps} fps",
         _ when status is { Hello: { } hello, RoundTrip: { } rtt } =>
             $"TelaDois: conectado · {hello.Width}×{hello.Height} · {Math.Round(rtt.TotalMilliseconds):0} ms",
         _ when status.Hello is { } hello => $"TelaDois: conectado · {hello.Width}×{hello.Height}",

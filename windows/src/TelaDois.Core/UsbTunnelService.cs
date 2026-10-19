@@ -1,6 +1,7 @@
 using System.Net.Sockets;
 using TelaDois.Core.Link;
 using TelaDois.Core.Usbmux;
+using TelaDois.Core.Video;
 
 namespace TelaDois.Core;
 
@@ -12,13 +13,14 @@ public enum TunnelState
     Connected,
 }
 
-public sealed record TunnelStatus(TunnelState State, HelloInfo? Hello = null, TimeSpan? RoundTrip = null);
+public sealed record TunnelStatus(TunnelState State, HelloInfo? Hello = null, TimeSpan? RoundTrip = null, VideoConfig? Video = null);
 
 /// <summary>
 /// Liga tudo: escuta o usbmuxd; com um iPhone no cabo, tenta abrir o túnel até a porta 7100 a cada
 /// <see cref="Retry"/> (recusado = app fechado) e conduz a sessão; ao desplugar, volta a esperar.
+/// Com <paramref name="video"/>, a sessão vira a Segunda Tela.
 /// </summary>
-public sealed class UsbTunnelService(UsbmuxClient usbmux, LinkSessionOptions options, Action<string> log)
+public sealed class UsbTunnelService(UsbmuxClient usbmux, LinkSessionOptions options, Action<string> log, IVideoSource? video = null)
 {
     private string? _lastError;
 
@@ -109,9 +111,10 @@ public sealed class UsbTunnelService(UsbmuxClient usbmux, LinkSessionOptions opt
                 log("túnel aberto até o app do iPhone");
                 var reason = await LinkSession.RunAsync(
                     tunnel,
-                    status => Report(new TunnelStatus(TunnelState.Connected, status.Hello, status.RoundTrip)),
+                    status => Report(new TunnelStatus(TunnelState.Connected, status.Hello, status.RoundTrip, status.Video)),
                     options,
-                    ct);
+                    ct,
+                    video);
                 log($"sessão encerrada: {reason}");
             }
             catch (UsbmuxException e) when (e.Code == UsbmuxMessages.ResultConnectionRefused)
@@ -122,7 +125,7 @@ public sealed class UsbTunnelService(UsbmuxClient usbmux, LinkSessionOptions opt
             {
                 return;
             }
-            catch (Exception e) when (e is IOException or InvalidDataException)
+            catch (Exception e) when (e is IOException or InvalidDataException or InvalidOperationException)
             {
                 log($"falha no túnel: {e.Message}");
             }
