@@ -40,6 +40,32 @@ public struct LinkHello: Equatable, Sendable {
     }
 }
 
+/// Formato do vídeo transmitido pelo PC.
+public struct LinkVideoConfig: Equatable, Sendable {
+    public let width: UInt32
+    public let height: UInt32
+    public let fps: UInt16
+
+    public init(width: UInt32, height: UInt32, fps: UInt16) {
+        self.width = width
+        self.height = height
+        self.fps = fps
+    }
+}
+
+/// Uma imagem H.264 (Annex-B); `timestamp` em µs desde o início da transmissão.
+public struct LinkVideoFrame: Equatable, Sendable {
+    public let isKeyframe: Bool
+    public let timestamp: UInt64
+    public let accessUnit: [UInt8]
+
+    public init(isKeyframe: Bool, timestamp: UInt64, accessUnit: [UInt8]) {
+        self.isKeyframe = isKeyframe
+        self.timestamp = timestamp
+        self.accessUnit = accessUnit
+    }
+}
+
 public enum LinkProtocol {
     public static let version: UInt16 = 1
     public static let port: UInt16 = 7100
@@ -58,6 +84,34 @@ public enum LinkProtocol {
             version: readBigEndian(bytes[0..<2]),
             width: readBigEndian(bytes[2..<6]),
             height: readBigEndian(bytes[6..<10])
+        )
+    }
+
+    public static func config(width: UInt32, height: UInt32, fps: UInt16) -> LinkFrame {
+        LinkFrame(.config, payload: bigEndianBytes(width) + bigEndianBytes(height) + bigEndianBytes(fps))
+    }
+
+    public static func parseConfig(_ frame: LinkFrame) -> LinkVideoConfig? {
+        guard frame.messageType == .config, frame.payload.count == 10 else { return nil }
+        let bytes = frame.payload[...]
+        return LinkVideoConfig(
+            width: readBigEndian(bytes[0..<4]),
+            height: readBigEndian(bytes[4..<8]),
+            fps: readBigEndian(bytes[8..<10])
+        )
+    }
+
+    public static func video(keyframe: Bool, timestamp: UInt64, accessUnit: [UInt8]) -> LinkFrame {
+        LinkFrame(.video, payload: [keyframe ? 1 : 0] + bigEndianBytes(timestamp) + accessUnit)
+    }
+
+    public static func parseVideo(_ frame: LinkFrame) -> LinkVideoFrame? {
+        guard frame.messageType == .video, frame.payload.count >= 9 else { return nil }
+        let bytes = frame.payload[...]
+        return LinkVideoFrame(
+            isKeyframe: bytes[0] & 1 != 0,
+            timestamp: readBigEndian(bytes[1..<9]),
+            accessUnit: Array(bytes[9...])
         )
     }
 

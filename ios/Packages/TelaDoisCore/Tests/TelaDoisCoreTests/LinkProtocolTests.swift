@@ -17,6 +17,34 @@ final class LinkProtocolTests: XCTestCase {
         XCTAssertEqual(LinkProtocol.ping(1_234_567_890_123).encoded(), hex("05000000080000011F71FB04CB"))
     }
 
+    func testConfigMatchesGoldenBytes() {
+        XCTAssertEqual(LinkProtocol.config(width: 1366, height: 768, fps: 60).encoded(), hex("020000000A0000055600000300003C"))
+    }
+
+    func testVideoMatchesGoldenBytes() {
+        XCTAssertEqual(
+            LinkProtocol.video(keyframe: true, timestamp: 1000, accessUnit: hex("0000000109F0")).encoded(),
+            hex("030000000F0100000000000003E80000000109F0")
+        )
+    }
+
+    func testParsesConfigAndVideo() {
+        XCTAssertEqual(
+            LinkProtocol.parseConfig(LinkProtocol.config(width: 2556, height: 1179, fps: 30)),
+            LinkVideoConfig(width: 2556, height: 1179, fps: 30)
+        )
+        XCTAssertEqual(
+            LinkProtocol.parseVideo(LinkProtocol.video(keyframe: false, timestamp: 42, accessUnit: [1, 2, 3])),
+            LinkVideoFrame(isKeyframe: false, timestamp: 42, accessUnit: [1, 2, 3])
+        )
+    }
+
+    func testRejectsMalformedConfigAndVideo() {
+        XCTAssertNil(LinkProtocol.parseConfig(LinkFrame(.config, payload: [0, 1])))
+        XCTAssertNil(LinkProtocol.parseVideo(LinkFrame(.video, payload: [1, 0, 0])))
+        XCTAssertNil(LinkProtocol.parseVideo(LinkProtocol.ping(1)))
+    }
+
     func testParsesHello() {
         XCTAssertEqual(
             LinkProtocol.parseHello(LinkProtocol.hello(width: 2622, height: 1206)),
