@@ -19,6 +19,15 @@ final class LinkSessionStateTests: XCTestCase {
         XCTAssertEqual(state.receive(LinkFrame(type: 99), now: t0), [])
     }
 
+    func testConfigStartsVideoAndVideoFramesArePassedOn() {
+        var state = LinkSessionState(now: t0)
+        XCTAssertEqual(
+            state.receive(LinkProtocol.config(width: 640, height: 296, fps: 30), now: t0),
+            [.startVideo(LinkConfig(width: 640, height: 296, fps: 30))]
+        )
+        XCTAssertEqual(state.receive(LinkProtocol.video([1, 2, 3]), now: t0), [.video([1, 2, 3])])
+    }
+
     func testTimesOutAfterThreeSecondsOfSilence() {
         let state = LinkSessionState(now: t0)
         XCTAssertFalse(state.isTimedOut(now: t0.addingTimeInterval(3)))

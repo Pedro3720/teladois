@@ -49,6 +49,18 @@ final class LinkProtocolTests: XCTestCase {
         XCTAssertThrowsError(try decoder.append(hex("03FFFFFFFF")))
     }
 
+    func testConfigMatchesGoldenBytes() {
+        XCTAssertEqual(LinkProtocol.config(width: 2556, height: 1179, fps: 60).encoded(), hex("020000000A000009FC0000049B003C"))
+        XCTAssertEqual(
+            LinkProtocol.parseConfig(LinkProtocol.config(width: 2556, height: 1179, fps: 60)),
+            LinkConfig(width: 2556, height: 1179, fps: 60)
+        )
+    }
+
+    func testKeyframeRequestMatchesGoldenBytes() {
+        XCTAssertEqual(LinkProtocol.keyframeRequest().encoded(), hex("0400000000"))
+    }
+
     func testUnknownTypeHasNoMessageType() {
         XCTAssertNil(LinkFrame(type: 99).messageType)
     }
