@@ -70,6 +70,10 @@ Mantenha a seção "Handoff entre computadores" com o checklist (ajuste se algo 
 
 ## 5. Commit e push
 
+- Atualize o grafo do graphify antes do commit (só AST, sem custo de tokens):
+  `uv tool run --from graphifyy python -m graphify update .` e inclua `graphify-out/graph.json`,
+  `graphify-out/GRAPH_REPORT.md` e `graphify-out/manifest.json` no commit, para o outro PC já chegar com o grafo certo.
+  Se documentos (`.md`, workflows) mudaram muito, avise que vale rodar `/graphify . --update` para reextrair o texto.
 - Adicione só o que é do projeto (nunca `git add -A` às cegas: revise `git status` e adicione por caminho).
 - No Windows, mensagem com acento vai num arquivo em `.git/` e `git commit -F <arquivo>` (o PowerShell estraga UTF-8);
   apague o arquivo depois. A mensagem descreve o que mudou e termina com

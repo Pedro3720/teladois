@@ -1,0 +1,9 @@
+# O que o graphify NÃO coloca no grafo (além do .gitignore).
+# Planos de etapas já executadas: históricos, repetem o código que já está no grafo pela AST.
+docs/superpowers/plans/
+# Imagens (ícones): extrair exigiria visão e não ajuda a navegar no código.
+*.png
+# Arquivo gerado pelo npm.
+package-lock.json
+# Controle local dos subagentes.
+.superpowers/
