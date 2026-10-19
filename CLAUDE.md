@@ -109,6 +109,8 @@ Levantado dos arquivos de configuração deste PC em 2026-10-16 (`~/.claude/sett
 | GitHub CLI (`gh`) | CI, artefatos, PRs | `winget install --id GitHub.cli -e` e depois `gh auth login` |
 | Node.js 24 | protótipo, Playwright, REA | https://nodejs.org |
 | Python 3 (`py`) | inspecionar `.ipa`, scripts | https://python.org |
+| uv | instalar o `graphifyy` como ferramenta isolada | `winget install --id astral-sh.uv -e` |
+| Claude Code CLI (`claude`) | instalar plugins (`claude plugin install …`) | `npm install -g @anthropic-ai/claude-code` |
 | iTunes 64-bit **versão web** + iCloud **versão web** | driver USB do iPhone (Apple Mobile Device Support) | links na seção de requisitos de https://sideloadly.io (não usar Microsoft Store) |
 | Sideloadly | instalar o `.ipa` no iPhone | https://sideloadly.io |
 | Claude Desktop (opcional) | traz os plugins e conectores da conta automaticamente | https://claude.ai/download |
@@ -132,11 +134,11 @@ Para tê-los também no CLI puro (os marketplaces já estão registrados neste P
 | Origem | Skills usadas neste projeto |
 |---|---|
 | Plugins | superpowers (`brainstorming`, `writing-plans`, `subagent-driven-development`, `test-driven-development`, `systematic-debugging`, `verification-before-completion`, `requesting-code-review`), agent-skills (`spec`, `plan`, `ci-cd-and-automation`, `api-and-interface-design`, `performance-optimization`, `security-and-hardening`…), ui-ux-pro-max, frontend-design, hyperframes (vídeo demo, opcional) |
-| Pessoais (`~/.claude/skills`) | `reverse-engineer-anything` (usa o MCP `rea`) |
+| Pessoais (`~/.claude/skills`) | `reverse-engineer-anything` (usa o MCP `rea`), `graphify` (instalada pelo `graphify install`, ver abaixo) |
 | Projeto (`.claude/skills`) | nenhuma |
 
 - **`reverse-engineer-anything`**: não vale mover para o projeto — é genérica e depende do REA instalado globalmente (`npm install -g rea-agents`); copie a pasta `~/.claude/skills/reverse-engineer-anything` para o outro PC.
-- **`graphify`**: o `~/.claude/CLAUDE.md` global manda usar `~/.claude/skills/graphify/SKILL.md`, mas **essa skill não existe neste PC** (só há um pacote npm `graphify@1.0.0`). Reinstalar a skill nos dois PCs antes de usar `/graphify`.
+- **`graphify`** (mapa do código em grafo para navegar no projeto gastando menos tokens; comando `/graphify .`): o pacote certo é o **`graphifyy`** (dois "y") do PyPI, repositório oficial https://github.com/Graphify-Labs/graphify. O pacote npm `graphify` **não tem relação** com ele, não use. Instalação (uma vez por PC): `winget install --id astral-sh.uv -e` → terminal novo → `uv tool install graphifyy` → `uv tool update-shell` → `graphify install --platform claude`. Isso cria `~/.claude/skills/graphify/` e o `~/.claude/CLAUDE.md` global que registra a skill (sem hooks; hooks só com `--project`). Instalado em 2026-10-18 (versão 0.9.92) no PC onde o projeto fica em `D:\Downloads\Teladois`; falta instalar no outro PC.
 
 ### MCP servers
 | Nome | Para quê | Como configurar |
