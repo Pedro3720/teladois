@@ -31,29 +31,36 @@ struct RestScreenView: View {
         GeometryReader { geo in
             ZStack {
                 Color.black
-                ClockPageView(
-                    clock: ClockFormatter.text(for: now, timeZone: settings.timeZone),
-                    temperature: weather.temperatureLabel,
-                    batteryLevel: battery.level,
-                    isCharging: battery.isCharging,
-                    isLinked: link.isConnected,
-                    safeArea: geo.safeAreaInsets
-                )
-                if dim.isDimmed {
-                    // Camada preta por cima de tudo: recebe o toque, então nada embaixo é acionado.
-                    Color.black
-                        .contentShape(Rectangle())
-                        .onTapGesture { wake() }
-                        // Escurece com fade; acorda na hora (sem fade na saída).
-                        .transition(.asymmetric(
-                            insertion: .opacity.animation(.easeIn(duration: 1.2)),
-                            removal: .identity
-                        ))
+                if link.videoConfig != nil {
+                    SecondScreenView(renderer: link.renderer)
                         .accessibilityElement()
-                        .accessibilityIdentifier("dim-overlay")
-                        .accessibilityLabel("Tela escurecida")
-                        .accessibilityHint("Toque para acender")
-                        .accessibilityAddTraits(.isButton)
+                        .accessibilityIdentifier("second-screen")
+                        .accessibilityLabel("Segunda Tela")
+                } else {
+                    ClockPageView(
+                        clock: ClockFormatter.text(for: now, timeZone: settings.timeZone),
+                        temperature: weather.temperatureLabel,
+                        batteryLevel: battery.level,
+                        isCharging: battery.isCharging,
+                        isLinked: link.isConnected,
+                        safeArea: geo.safeAreaInsets
+                    )
+                    if dim.isDimmed {
+                        // Camada preta por cima de tudo: recebe o toque, então nada embaixo é acionado.
+                        Color.black
+                            .contentShape(Rectangle())
+                            .onTapGesture { wake() }
+                            // Escurece com fade; acorda na hora (sem fade na saída).
+                            .transition(.asymmetric(
+                                insertion: .opacity.animation(.easeIn(duration: 1.2)),
+                                removal: .identity
+                            ))
+                            .accessibilityElement()
+                            .accessibilityIdentifier("dim-overlay")
+                            .accessibilityLabel("Tela escurecida")
+                            .accessibilityHint("Toque para acender")
+                            .accessibilityAddTraits(.isButton)
+                    }
                 }
             }
             .ignoresSafeArea()
@@ -68,6 +75,12 @@ struct RestScreenView: View {
         .persistentSystemOverlays(.hidden)
         .onReceive(ticker) { tick in
             now = tick.addingTimeInterval(clockOffset)
+            if link.videoConfig != nil {
+                // Segunda Tela: nunca escurece e usa o brilho do usuário.
+                dim.touch(now: tick)
+                brightness.restore()
+                return
+            }
             let wasDimmed = dim.isDimmed
             dim.update(now: tick)
             if dim.isDimmed, !wasDimmed { brightness.dim() }

@@ -10,6 +10,10 @@ import UIKit
 @Observable
 final class UsbLink {
     private(set) var isConnected = false
+    /// Formato do vídeo do PC; `nil` = sem Segunda Tela (Modo Descanso).
+    private(set) var videoConfig: LinkVideoConfig?
+    /// Constante: o `@Observable` não acompanha `let`.
+    let renderer = VideoRenderer()
 
     @ObservationIgnored private var listener: NWListener?
     @ObservationIgnored private var connection: NWConnection?
@@ -86,7 +90,7 @@ final class UsbLink {
     }
 
     private func receiveNext(_ id: ObjectIdentifier) {
-        connection?.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
+        connection?.receive(minimumIncompleteLength: 1, maximumLength: 1024 * 1024) { [weak self] data, _, isComplete, error in
             MainActor.assumeIsolated {
                 guard let self, self.isCurrent(id) else { return }
                 if let data, !data.isEmpty, !self.handle(data) { return }
@@ -109,6 +113,17 @@ final class UsbLink {
             return false
         }
         for frame in frames {
+            switch frame.messageType {
+            case .config:
+                if let config = LinkProtocol.parseConfig(frame) {
+                    renderer.reset()
+                    videoConfig = config
+                }
+            case .video:
+                if let video = LinkProtocol.parseVideo(frame) { renderer.enqueue(video) }
+            default:
+                break
+            }
             for action in session.receive(frame, now: Date()) {
                 switch action {
                 case .send(let reply):
@@ -133,6 +148,10 @@ final class UsbLink {
         connection?.cancel()
         connection = nil
         isConnected = false
+        if videoConfig != nil {
+            videoConfig = nil
+            renderer.reset()
+        }
     }
 
     /// Resolução nativa em paisagem (largura > altura), em pixels.

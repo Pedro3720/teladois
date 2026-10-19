@@ -96,10 +96,10 @@
     "semantic_hash": "7652ab25ff32e370b2bfae33e95f60a8"
   },
   "ios/TelaDoisUITests/RestScreenUITests.swift": {
-    "mtime": 1792408567.2159412,
-    "seen": 1792412055.3797226,
-    "ast_hash": "6af6e06a4eaaea5a61fc2c22ddf3d749",
-    "semantic_hash": "6af6e06a4eaaea5a61fc2c22ddf3d749"
+    "mtime": 1792431819.2041986,
+    "seen": 1792432495.2912,
+    "ast_hash": "58a7a2b5f228a7f51e0fa26c2f57ec79",
+    "semantic_hash": ""
   },
   "ios/TelaDoisUITests/ScreenshotHelpers.swift": {
     "mtime": 1792408567.220103,
@@ -144,10 +144,10 @@
     "semantic_hash": "c5c5a4e748751494c349ebf56b9e1cfc"
   },
   "ios/TelaDois/RestScreenView.swift": {
-    "mtime": 1792408567.1807928,
-    "seen": 1792412055.3797352,
-    "ast_hash": "035e959aecb3306c6e6d616979322bac",
-    "semantic_hash": "035e959aecb3306c6e6d616979322bac"
+    "mtime": 1792431943.041309,
+    "seen": 1792432495.2912154,
+    "ast_hash": "39634c5ee2f13cdf35137d53adb9ae1a",
+    "semantic_hash": ""
   },
   "ios/TelaDois/ScreenBrightness.swift": {
     "mtime": 1792408567.205589,
@@ -168,10 +168,10 @@
     "semantic_hash": "fe05d74dee2fd95577d70a5db59b74b7"
   },
   "ios/TelaDois/UsbLink.swift": {
-    "mtime": 1792408567.2116265,
-    "seen": 1792412055.3797414,
-    "ast_hash": "2b69cc985f1c9ffe0695f731bfe1f3da",
-    "semantic_hash": "2b69cc985f1c9ffe0695f731bfe1f3da"
+    "mtime": 1792431932.3293579,
+    "seen": 1792432495.2912252,
+    "ast_hash": "fef20399e1860d2dc82a2e2e1b664322",
+    "semantic_hash": ""
   },
   "ios/TelaDois/WeatherProvider.swift": {
     "mtime": 1792408567.2116265,
@@ -450,10 +450,10 @@
     "semantic_hash": "1393a6c1797ea60583e700718ae8c741"
   },
   "ios/project.yml": {
-    "mtime": 1792408567.220613,
-    "seen": 1792412055.3798146,
-    "ast_hash": "47911791cb66339d4567871b104e3f0c",
-    "semantic_hash": "47911791cb66339d4567871b104e3f0c"
+    "mtime": 1792431819.0940552,
+    "seen": 1792432495.2913623,
+    "ast_hash": "fa3bdcbcce4b8c12c1ff29ce79b463e7",
+    "semantic_hash": ""
   },
   "prototype/index.html": {
     "mtime": 1792180052.8285303,
@@ -621,6 +621,18 @@
     "mtime": 1792431074.4748483,
     "seen": 1792431302.038286,
     "ast_hash": "cee900ff33361eb36546460f8657fe22",
+    "semantic_hash": ""
+  },
+  "ios/TelaDois/SecondScreenView.swift": {
+    "mtime": 1792431924.116689,
+    "seen": 1792432495.2912195,
+    "ast_hash": "1d0bfbb1cea56b703bd4cfb91d901e81",
+    "semantic_hash": ""
+  },
+  "ios/TelaDois/VideoRenderer.swift": {
+    "mtime": 1792431924.0235245,
+    "seen": 1792432495.2912269,
+    "ast_hash": "fab37cddaf9fc2decd4ff2b8df599408",
     "semantic_hash": ""
   }
 }
