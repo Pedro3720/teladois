@@ -10,6 +10,9 @@ import UIKit
 @Observable
 final class UsbLink {
     private(set) var isConnected = false
+    /// O PC mandou CONFIG: a tela mostra o vídeo (Segunda Tela) em vez do Descanso.
+    private(set) var isStreaming = false
+    @ObservationIgnored let player = StreamPlayer()
 
     @ObservationIgnored private var listener: NWListener?
     @ObservationIgnored private var connection: NWConnection?
@@ -24,6 +27,7 @@ final class UsbLink {
         // Só loopback: nada exposto no Wi-Fi e sem pedido de "rede local".
         parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: port)
         guard let listener = try? NWListener(using: parameters) else { return }
+        player.onNeedKeyframe = { [weak self] in self?.send(LinkProtocol.keyframeRequest()) }
         listener.newConnectionHandler = { [weak self] newConnection in
             MainActor.assumeIsolated { self?.accept(newConnection) }
         }
@@ -116,8 +120,11 @@ final class UsbLink {
                 case .close:
                     disconnect()
                     return false
-                case .startVideo, .video:
-                    break // a Segunda Tela entra na próxima tarefa
+                case .startVideo:
+                    player.reset()
+                    isStreaming = true
+                case .video(let accessUnit):
+                    player.enqueue(accessUnit)
                 }
             }
         }
@@ -135,6 +142,10 @@ final class UsbLink {
         connection?.cancel()
         connection = nil
         isConnected = false
+        if isStreaming {
+            isStreaming = false
+            player.reset()
+        }
     }
 
     /// Resolução nativa em paisagem (largura > altura), em pixels.
