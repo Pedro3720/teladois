@@ -47,6 +47,19 @@ public class LinkProtocolTests
         Assert.Throws<InvalidDataException>(() => new LinkFrameDecoder().Append(Convert.FromHexString("03FFFFFFFF")));
 
     [Fact]
+    public void ConfigMatchesGoldenBytes()
+    {
+        var frame = LinkMessages.Config(new VideoConfig(2556, 1179, 60));
+        Assert.Equal(Convert.FromHexString("020000000A000009FC0000049B003C"), frame.Encode());
+        Assert.True(LinkMessages.TryParseConfig(frame, out var config));
+        Assert.Equal(new VideoConfig(2556, 1179, 60), config);
+    }
+
+    [Fact]
+    public void KeyframeRequestMatchesGoldenBytes() =>
+        Assert.Equal(Convert.FromHexString("0400000000"), LinkMessages.KeyframeRequest().Encode());
+
+    [Fact]
     public void UnknownTypeHasNoMessageType() => Assert.Null(new LinkFrame(99, []).MessageType);
 
     [Fact]

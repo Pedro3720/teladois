@@ -4,6 +4,8 @@ namespace TelaDois.Core.Link;
 
 public readonly record struct HelloInfo(ushort Version, uint Width, uint Height);
 
+public readonly record struct VideoConfig(uint Width, uint Height, ushort Fps);
+
 public static class LinkMessages
 {
     public const ushort ProtocolVersion = 1;
@@ -32,6 +34,35 @@ public static class LinkMessages
             BinaryPrimitives.ReadUInt32BigEndian(payload[6..]));
         return true;
     }
+
+    public static LinkFrame Config(VideoConfig config)
+    {
+        var payload = new byte[10];
+        BinaryPrimitives.WriteUInt32BigEndian(payload, config.Width);
+        BinaryPrimitives.WriteUInt32BigEndian(payload.AsSpan(4), config.Height);
+        BinaryPrimitives.WriteUInt16BigEndian(payload.AsSpan(8), config.Fps);
+        return new LinkFrame(LinkMessageType.Config, payload);
+    }
+
+    public static bool TryParseConfig(LinkFrame frame, out VideoConfig config)
+    {
+        config = default;
+        if (frame.MessageType != LinkMessageType.Config || frame.Payload.Length != 10)
+        {
+            return false;
+        }
+        var payload = frame.Payload.AsSpan();
+        config = new VideoConfig(
+            BinaryPrimitives.ReadUInt32BigEndian(payload),
+            BinaryPrimitives.ReadUInt32BigEndian(payload[4..]),
+            BinaryPrimitives.ReadUInt16BigEndian(payload[8..]));
+        return true;
+    }
+
+    /// <summary>Um access unit H.264 Annex-B.</summary>
+    public static LinkFrame Video(byte[] accessUnit) => new(LinkMessageType.Video, accessUnit);
+
+    public static LinkFrame KeyframeRequest() => new(LinkMessageType.KeyframeRequest);
 
     public static LinkFrame Ping(ulong timestamp) => Timestamped(LinkMessageType.Ping, timestamp);
 
