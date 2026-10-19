@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using TelaDois.Core.Video;
 
 namespace TelaDois.Core.Link;
 
@@ -8,7 +9,7 @@ public sealed record LinkSessionOptions(TimeSpan PingInterval, TimeSpan Timeout)
 }
 
 /// <summary>Estado da conexão: resolução do iPhone e a última latência de ida e volta medida.</summary>
-public sealed record LinkStatus(HelloInfo Hello, TimeSpan? RoundTrip);
+public sealed record LinkStatus(HelloInfo Hello, TimeSpan? RoundTrip, VideoConfig? Video = null);
 
 public enum LinkEndReason
 {
@@ -24,7 +25,7 @@ public enum LinkEndReason
 /// </summary>
 public static class LinkSession
 {
-    public static async Task<LinkEndReason> RunAsync(Stream stream, Action<LinkStatus> onStatus, LinkSessionOptions options, CancellationToken ct)
+    public static async Task<LinkEndReason> RunAsync(Stream stream, Action<LinkStatus> onStatus, LinkSessionOptions options, CancellationToken ct, Func<HelloInfo, CancellationToken, Task<IVideoFeed?>>? openVideo = null)
     {
         var reader = new LinkFrameReader(stream);
         using var writeLock = new SemaphoreSlim(1, 1);
@@ -32,6 +33,8 @@ public static class LinkSession
         var clock = Stopwatch.StartNew();
         long lastHeard = 0;
         Task<LinkEndReason>? receiving = null;
+        IVideoFeed? feed = null;
+        Task? sending = null;
 
         async Task SendAsync(LinkFrame frame, CancellationToken token)
         {
@@ -54,6 +57,21 @@ public static class LinkSession
                 return LinkEndReason.Closed;
             }
             var status = new LinkStatus(hello.Value, null);
+            if (openVideo is not null && (feed = await openVideo(hello.Value, cts.Token)) is not null)
+            {
+                status = status with { Video = feed.Config };
+                await SendAsync(LinkMessages.Config(feed.Config), cts.Token);
+                var activeFeed = feed;
+                var started = Stopwatch.StartNew();
+                sending = Task.Run(async () =>
+                {
+                    while (true)
+                    {
+                        var unit = await activeFeed.NextAsync(cts.Token);
+                        await SendAsync(LinkMessages.Video(unit.IsKeyframe, (ulong)(started.Elapsed.Ticks / 10), unit.Data), cts.Token);
+                    }
+                }, CancellationToken.None);
+            }
             onStatus(status);
             Interlocked.Exchange(ref lastHeard, clock.ElapsedMilliseconds);
 
@@ -80,9 +98,17 @@ public static class LinkSession
             while (true)
             {
                 var tick = Task.Delay(options.PingInterval, cts.Token);
-                if (await Task.WhenAny(receiving, tick) == receiving)
+                var done = sending is null
+                    ? await Task.WhenAny(receiving, tick)
+                    : await Task.WhenAny(receiving, sending, tick);
+                if (done == receiving)
                 {
                     return await receiving;
+                }
+                if (done == sending)
+                {
+                    await sending; // relança a falha de escrita (IOException → Closed)
+                    return LinkEndReason.Closed;
                 }
                 ct.ThrowIfCancellationRequested();
                 if (clock.ElapsedMilliseconds - Interlocked.Read(ref lastHeard) > options.Timeout.TotalMilliseconds)
@@ -116,6 +142,20 @@ public static class LinkSession
                 catch (Exception e) when (e is OperationCanceledException or IOException or ObjectDisposedException)
                 {
                 }
+            }
+            if (sending is not null)
+            {
+                try
+                {
+                    await sending;
+                }
+                catch (Exception e) when (e is OperationCanceledException or IOException or ObjectDisposedException)
+                {
+                }
+            }
+            if (feed is not null)
+            {
+                await feed.DisposeAsync();
             }
             using var byeTimeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
             try

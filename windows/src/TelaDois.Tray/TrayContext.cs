@@ -1,6 +1,7 @@
 using TelaDois.Core;
 using TelaDois.Core.Link;
 using TelaDois.Core.Usbmux;
+using TelaDois.Core.Video;
 
 namespace TelaDois.Tray;
 
@@ -10,11 +11,16 @@ internal sealed class TrayContext : ApplicationContext
     private readonly NotifyIcon _icon;
     private readonly FileLog _log = FileLog.Default();
     private readonly CancellationTokenSource _cts = new();
+    private readonly TraySettings _settings = TraySettings.Load();
     private TunnelState? _lastState;
 
     public TrayContext()
     {
         var menu = new ContextMenuStrip();
+        var monitors = new ToolStripMenuItem("Monitor transmitido");
+        monitors.DropDownItems.Add("(carregando)");
+        monitors.DropDownOpening += (_, _) => FillMonitors(monitors);
+        menu.Items.Add(monitors);
         menu.Items.Add("Abrir registro", null, (_, _) => _log.Open());
         menu.Items.Add("Sair", null, (_, _) => ExitThread());
         _icon = new NotifyIcon
@@ -26,7 +32,10 @@ internal sealed class TrayContext : ApplicationContext
         };
 
         var ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
-        var service = new UsbTunnelService(new UsbmuxClient(UsbmuxClient.DefaultEndpoint), LinkSessionOptions.Default, _log.Write);
+        var video = new VideoFeedFactory(FfmpegLocator.Find(), new SystemProcessRunner(), DisplayCatalog.Enumerate, () => _settings.Monitor, _log.Write);
+        video.FfmpegMissing += () => ui.Post(_ => _icon.ShowBalloonTip(10000, "TelaDois",
+            "Para a Segunda Tela, instale o FFmpeg: winget install Gyan.FFmpeg", ToolTipIcon.Warning), null);
+        var service = new UsbTunnelService(new UsbmuxClient(UsbmuxClient.DefaultEndpoint), LinkSessionOptions.Default, _log.Write, video.OpenAsync);
         service.StatusChanged += status => ui.Post(_ => Show(status), null);
         _log.Write("TelaDois iniciado");
         _ = Task.Run(() => service.RunAsync(_cts.Token));
@@ -51,6 +60,29 @@ internal sealed class TrayContext : ApplicationContext
             _icon.ShowBalloonTip(10000, "TelaDois",
                 "Instale o iTunes baixado do site da Apple (não o da Microsoft Store) para o PC enxergar o iPhone.",
                 ToolTipIcon.Warning);
+        }
+    }
+
+    private void FillMonitors(ToolStripMenuItem menu)
+    {
+        menu.DropDownItems.Clear();
+        var outputs = DisplayCatalog.Enumerate();
+        var current = DisplayCatalog.Choose(outputs, _settings.Monitor);
+        foreach (var output in outputs)
+        {
+            var label = $"{output.DeviceName.Replace(@"\\.\", "")} · {output.Width}×{output.Height}{(output.IsPrimary ? " (principal)" : "")}";
+            var item = new ToolStripMenuItem(label) { Checked = output == current };
+            item.Click += (_, _) =>
+            {
+                _settings.Monitor = output.DeviceName;
+                _settings.Save();
+                _log.Write($"monitor transmitido: {output.DeviceName} (vale na próxima conexão)");
+            };
+            menu.DropDownItems.Add(item);
+        }
+        if (outputs.Count == 0)
+        {
+            menu.DropDownItems.Add(new ToolStripMenuItem("nenhum monitor encontrado") { Enabled = false });
         }
     }
 
