@@ -83,7 +83,8 @@ public class VideoFeedFactoryTests
 
         Assert.NotNull(feed);
         Assert.Equal(VideoKind.Extend, feed!.Kind);
-        Assert.Equal(new VideoConfig(2556, 1179, 60), feed.Config);
+        // O CONFIG informa o tamanho codificado: o h264_mf corta a linha ímpar (2556×1179 → 2556×1178).
+        Assert.Equal(new VideoConfig(2556, 1178, 60), feed.Config);
         await feed.NextAsync(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
         Assert.Contains("ddagrab=output_idx=2:framerate=60:draw_mouse=1", runner.Started.Last(a => !a.Contains("-frames:v")));
         await feed.DisposeAsync();

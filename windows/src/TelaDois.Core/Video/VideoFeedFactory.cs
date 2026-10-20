@@ -83,11 +83,14 @@ public sealed class VideoFeedFactory(
 
     /// <summary>
     /// A captura de <paramref name="output"/>. Se ela terminar sem nenhuma imagem (a sondagem passou, mas a linha real
-    /// falha nesta saída), o perfil guardado é esquecido: a próxima abertura sonda de novo.
+    /// falha nesta saída), o perfil guardado é esquecido: a próxima abertura sonda de novo. O CONFIG leva o tamanho
+    /// codificado (par, se o perfil corta), não o do monitor.
     /// </summary>
-    private FfmpegCapture Capture(EncoderProbe probe, string ffmpeg, EncoderProfile profile, DisplayOutput output) =>
-        new(runner, ffmpeg, FfmpegArguments.ForMonitor(profile, output.OutputIndex, Fps),
-            new VideoConfig((uint)output.Width, (uint)output.Height, Fps), log,
+    private FfmpegCapture Capture(EncoderProbe probe, string ffmpeg, EncoderProfile profile, DisplayOutput output)
+    {
+        var (width, height) = profile.EncodedSize(output.Width, output.Height);
+        return new(runner, ffmpeg, FfmpegArguments.ForMonitor(profile, output.OutputIndex, Fps),
+            new VideoConfig((uint)width, (uint)height, Fps), log,
             endedWithoutFrames: () =>
             {
                 if (probe.Forget(profile))
@@ -95,6 +98,7 @@ public sealed class VideoFeedFactory(
                     log($"a captura com {profile.Id} terminou sem nenhuma imagem: a próxima conexão testa as compressões de novo");
                 }
             });
+    }
 
     /// <summary>Liga o monitor virtual e captura ele; <c>null</c> para cair em Duplicar (motivo no log).</summary>
     private async Task<IVideoFeed?> TryExtendAsync(IVirtualMonitor monitor, EncoderProbe probe, string ffmpeg, HelloInfo hello, CancellationToken ct)
