@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using TelaDois.Core.Display;
 using TelaDois.Core.Link;
 using TelaDois.Core.Tests.Fakes;
 using TelaDois.Core.Usbmux;
@@ -209,5 +210,28 @@ public class UsbTunnelServiceTests
             TunnelStatusText.For(new TunnelStatus(TunnelState.Connected, hello, TimeSpan.FromMilliseconds(12.4))));
         Assert.Equal("TelaDois: conectado · 2556×1179",
             TunnelStatusText.For(new TunnelStatus(TunnelState.Connected, hello)));
+    }
+
+    [Fact]
+    public async Task MonitorModeFollowsTheSession()
+    {
+        await using var usbmuxd = new FakeUsbmuxd();
+        var monitor = new MonitorMode();
+        var service = new UsbTunnelService(new UsbmuxClient(usbmuxd.Endpoint), Fast, _ => { }, monitor: monitor) { Retry = TimeSpan.FromMilliseconds(100) };
+        var connected = WaitFor(service, s => s.State == TunnelState.Connected);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var run = service.RunAsync(cts.Token);
+
+        await connected.WaitAsync(cts.Token);
+        Assert.True(monitor.IsConnected);
+        Assert.True(monitor.WantsVideo); // liga sozinho ao conectar
+
+        var waiting = WaitFor(service, s => s.State == TunnelState.WaitingForIPhone);
+        await usbmuxd.SendEventAsync(FakeUsbmuxd.Detached(1));
+        await waiting.WaitAsync(cts.Token);
+        Assert.False(monitor.IsConnected);
+        Assert.False(monitor.WantsVideo);
+        cts.Cancel();
+        await run;
     }
 }

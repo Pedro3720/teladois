@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using TelaDois.Core.Display;
 using TelaDois.Core.Link;
 using TelaDois.Core.Usbmux;
 using TelaDois.Core.Video;
@@ -13,13 +14,13 @@ public enum TunnelState
     Connected,
 }
 
-public sealed record TunnelStatus(TunnelState State, HelloInfo? Hello = null, TimeSpan? RoundTrip = null, VideoConfig? Video = null);
+public sealed record TunnelStatus(TunnelState State, HelloInfo? Hello = null, TimeSpan? RoundTrip = null, VideoConfig? Video = null, VideoKind? Kind = null);
 
 /// <summary>
 /// Liga tudo: escuta o usbmuxd; com um iPhone no cabo, tenta abrir o túnel até a porta 7100 a cada
 /// <see cref="Retry"/> (recusado = app fechado) e conduz a sessão; ao desplugar, volta a esperar.
 /// </summary>
-public sealed class UsbTunnelService(UsbmuxClient usbmux, LinkSessionOptions options, Action<string> log, Func<HelloInfo, CancellationToken, Task<IVideoFeed?>>? openVideo = null)
+public sealed class UsbTunnelService(UsbmuxClient usbmux, LinkSessionOptions options, Action<string> log, Func<HelloInfo, CancellationToken, Task<IVideoFeed?>>? openVideo = null, MonitorMode? monitor = null)
 {
     private string? _lastError;
 
@@ -108,13 +109,23 @@ public sealed class UsbTunnelService(UsbmuxClient usbmux, LinkSessionOptions opt
             {
                 await using var tunnel = await usbmux.ConnectAsync(deviceId, LinkMessages.Port, ct);
                 log("túnel aberto até o app do iPhone");
-                var reason = await LinkSession.RunAsync(
-                    tunnel,
-                    status => Report(new TunnelStatus(TunnelState.Connected, status.Hello, status.RoundTrip, status.Video)),
-                    options,
-                    ct,
-                    openVideo);
-                log($"sessão encerrada: {reason}");
+                // Ao conectar, a Segunda Tela liga sozinha; ao sair, desliga (o atalho só vale com o iPhone conectado).
+                monitor?.SessionStarted();
+                try
+                {
+                    var reason = await LinkSession.RunAsync(
+                        tunnel,
+                        status => Report(new TunnelStatus(TunnelState.Connected, status.Hello, status.RoundTrip, status.Video, status.Kind)),
+                        options,
+                        ct,
+                        openVideo,
+                        monitor);
+                    log($"sessão encerrada: {reason}");
+                }
+                finally
+                {
+                    monitor?.SessionEnded();
+                }
             }
             catch (UsbmuxException e) when (e.Code == UsbmuxMessages.ResultConnectionRefused)
             {
