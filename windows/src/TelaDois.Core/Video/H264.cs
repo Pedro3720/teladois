@@ -7,6 +7,8 @@ internal static class H264
 {
     public const int Idr = 5;
     public const int Aud = 9;
+    public const int Sps = 7;
+    public const int Pps = 8;
 
     /// <summary>Posição de cada código de início (contando o zero extra do código de 4 bytes) e o tipo do NAL.</summary>
     public static List<(int Start, int Type)> ScanNals(byte[] data, int count)
