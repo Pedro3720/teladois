@@ -23,7 +23,7 @@ Além do que já faz:
 2. Cria (ou recria) duas tarefas na pasta `\TelaDois\` do Agendador:
    - `Ligar monitor virtual` → `pnputil.exe /enable-device "<InstanceId>"`
    - `Desligar monitor virtual` → `pnputil.exe /disable-device "<InstanceId>"`
-   - Rodam como `SYSTEM`, sem gatilho (só sob demanda), com permissão de **leitura e execução para o usuário que instalou** (descritor de segurança da tarefa), tempo-limite de 1 min, sem várias instâncias ao mesmo tempo.
+   - Rodam como `SYSTEM`, sem gatilho (só sob demanda), com permissão de **leitura e execução para os usuários do PC** (grupo Usuários, `BU`, no descritor de segurança da tarefa — o PowerShell de administrador pode ser outra conta que não a do dia a dia), tempo-limite de 1 min, sem várias instâncias ao mesmo tempo.
 3. No fim, desativa o dispositivo (o "3" some) e escreve o que fez.
 4. Rodar de novo é seguro (idempotente): recria as tarefas com o `InstanceId` atual.
 
