@@ -1,17 +1,17 @@
 # Graph Report - Aplicativo celular  (2026-10-20)
 
 ## Corpus Check
-- 129 files · ~54,183 words
+- 134 files · ~59,421 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 8 file(s) not represented in the graph (top: (none) 3, .h264 2, .css 1)
 
 ## Summary
-- 1384 nodes · 3990 edges · 69 communities (51 shown, 18 thin omitted)
-- Extraction: 80% EXTRACTED · 20% INFERRED · 0% AMBIGUOUS · INFERRED: 813 edges (avg confidence: 0.85)
+- 1497 nodes · 4425 edges · 67 communities (52 shown, 15 thin omitted)
+- Extraction: 80% EXTRACTED · 20% INFERRED · 0% AMBIGUOUS · INFERRED: 899 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `308d1fd3`
+- Built from commit: `084f426c`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -19,17 +19,17 @@
 - .RunAsync
 - LinkMessageType
 - DimState
-- TelaDois.Core.Link
+- CancellationToken
 - FakeUsbmuxd
 - VideoLayerView
 - Open-Meteo Weather
-- H264NALUnit
+- VirtualMonitorFeed
 - Design Tokens & Icon
 - Clock Formatting
 - Encerrar Session Routine
 - UsbLink
 - Prototype Package Config
-- Fact
+- Task
 - .NET Project Setup
 - FakeReadStream
 - Prototype Rest Mode JS
@@ -37,7 +37,7 @@
 - project.yml (XcodeGen project definition)
 - RestScreenView
 - Clock Page & Battery Ring
-- Etapa 4: USB tunnel (done, tested on iPhone)
+- Design spec: iPhone second screen + Modo Descanso
 - Hotkey
 - LinkStatsMeter
 - Prototype Static Server
@@ -56,44 +56,42 @@
 - LinkFrame
 - MonitorMode
 - LinkProtocol
-- LinkSession.cs
-- TelaDois.Core.Display
+- LinkSessionOptions
+- IVirtualMonitor
 - TelaDois.Core.Video
-- TelaDois.Core.Tests.Fakes
+- LinkProtocol.swift
 - DriverPipe
 - LinkMessageType
-- FakePC
+- Foundation
 - XCTestCase
 - EncoderProbe
 - TrayContext
-- GatedFeed
-- TrayContext.cs
+- IVideoFeed
+- DisplayCatalog.cs
 - .ReadAll
 - LinkSession
-- .Detach
-- PlistTests.cs
-- FakeDisplayApi
-- RestScreen (Clock and Music pages)
-- Foundation
-- VideoRenderer
-- SlowToDisposeFeed
+- FakeVirtualMonitor
+- Etapa 5c — o 3º monitor some quando desligado + tela preta no iPhone — Especificação de Design
+- Win32DisplayApi
+- TelaDois app (iPhone second screen + standby)
+- TraySettings
+- VideoConfig
+- ScheduledTaskSwitch
 - Fact
-- DisplayModeInfo
-- ToggleResult
-- HelloInfo
-- EndlessFeed
+- WeatherProvider
+- TunnelState
 
 ## God Nodes (most connected - your core abstractions)
-1. `MonitorMode` - 41 edges
-2. `FakeProcessRunner` - 41 edges
-3. `FakeProcess` - 40 edges
-4. `FakeVirtualMonitor` - 39 edges
-5. `VideoConfig` - 38 edges
-6. `IVideoFeed` - 38 edges
-7. `VideoFeedFactory` - 38 edges
-8. `LinkSessionTests` - 37 edges
-9. `FfmpegCapture` - 36 edges
-10. `TelaDois.Core.Video` - 34 edges
+1. `FakeVirtualMonitor` - 54 edges
+2. `VirtualDisplay` - 51 edges
+3. `FakeProcess` - 47 edges
+4. `VideoFeedFactory` - 44 edges
+5. `FakeProcessRunner` - 43 edges
+6. `MonitorMode` - 41 edges
+7. `VideoConfig` - 38 edges
+8. `IVideoFeed` - 38 edges
+9. `LinkSessionTests` - 37 edges
+10. `TelaDois.Core.Video` - 36 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `3.2 iPhone (Swift)` --references--> `H264Parser`  [INFERRED]
@@ -115,51 +113,51 @@
 - **PC <-> iPhone USB link: usbmuxd transport, protocol and endpoints** — docs_superpowers_specs_2026_10_16_iphone_segunda_tela_descanso_design_usbmuxd_transport, docs_superpowers_specs_2026_10_16_iphone_segunda_tela_descanso_design_protocol, docs_superpowers_specs_2026_10_16_iphone_segunda_tela_descanso_design_usblink, docs_superpowers_specs_2026_10_16_iphone_segunda_tela_descanso_design_devicewatcher, docs_superpowers_specs_2026_10_16_iphone_segunda_tela_descanso_design_streamsender, claude_rule_protocol_parity [INFERRED 0.85]
 - **Unsigned .ipa delivery: CI build, inspection, xtool/Sideloadly install** — _github_workflows_ios_build, _github_workflows_ios_build_ipa_artifact, claude_rule_ipa_inspection, claude_decision_unsigned_ipa, docs_instalacao_xtool_method, docs_instalacao_sideloadly_method [INFERRED 0.85]
 
-## Communities (69 total, 18 thin omitted)
+## Communities (67 total, 15 thin omitted)
 
 ### Community 0 - ".RunAsync"
-Cohesion: 0.19
-Nodes (12): LinkFrameReader, IVideoFeed, Config, Kind, Meters, FixedFeed, Config, Disposed (+4 more)
+Cohesion: 0.22
+Nodes (3): LinkFrameReader, FakePhone, LinkSessionTests
 
 ### Community 1 - "LinkMessageType"
 Cohesion: 0.17
-Nodes (11): .messageType, LinkMessageType, bye, config, hello, keyframeRequest, ping, pong (+3 more)
+Nodes (12): .messageType, LinkMessageType, bye, config, hello, keyframeRequest, ping, pong (+4 more)
 
 ### Community 2 - "DimState"
-Cohesion: 0.23
-Nodes (6): DimState, TouchResult, passThrough, wokeUp, DimStateTests, .body
+Cohesion: 0.28
+Nodes (5): DimState, TouchResult, passThrough, wokeUp, DimStateTests
 
 ### Community 4 - "FakeUsbmuxd"
 Cohesion: 0.06
-Nodes (24): LinkSessionOptions, Default, FirstFrameTimeout, StatsInterval, Plist, UsbmuxClient, DefaultEndpoint, UsbmuxException (+16 more)
+Nodes (25): HelloInfo, TunnelStatusText, Plist, UsbmuxClient, DefaultEndpoint, UsbmuxException, Code, DeviceAttached (+17 more)
 
 ### Community 6 - "Open-Meteo Weather"
-Cohesion: 0.10
-Nodes (8): CodingKeys, temperature, Current, MissingTemperature, OpenMeteo, Response, OpenMeteoTests, WeatherProvider
+Cohesion: 0.13
+Nodes (7): CodingKeys, temperature, Current, MissingTemperature, OpenMeteo, Response, OpenMeteoTests
 
-### Community 7 - "H264NALUnit"
-Cohesion: 0.22
-Nodes (5): H264NALType, H264NALUnit, .isVCL, H264Parser, H264ParserTests
+### Community 7 - "VirtualMonitorFeed"
+Cohesion: 0.19
+Nodes (10): VirtualMonitorFeed, Config, Kind, Meters, FailingDisposeFeed, Config, VirtualMonitorFeedTests, WaitingFeed (+2 more)
 
 ### Community 8 - "Design Tokens & Icon"
-Cohesion: 0.16
-Nodes (15): App icon check step (Assets.car, CFBundleIconName=AppIcon), Design tokens (Etapa 1), Color tokens (black, clock #7FA9F2, ink, muted, battery, track, bars), App icon (icone-1024.png, Canva), Landscape layout (clock left, date/temp/battery right, mini player), Typography tokens (Sofia Sans Extra Condensed stretched 1.5x, rounded system font), Landscape-only, full-screen, hidden status bar, iPhone-only settings, index.html (Modo Descanso web prototype) (+7 more)
+Cohesion: 0.12
+Nodes (19): App icon check step (Assets.car, CFBundleIconName=AppIcon), Etapa 3: Spotify (deferred), Design tokens (Etapa 1), Behavior tokens (60 s dim with 1.2 s fade, wake tap does not press buttons), Color tokens (black, clock #7FA9F2, ink, muted, battery, track, bars), App icon (icone-1024.png, Canva), Landscape layout (clock left, date/temp/battery right, mini player), Typography tokens (Sofia Sans Extra Condensed stretched 1.5x, rounded system font) (+11 more)
 
 ### Community 9 - "Clock Formatting"
 Cohesion: 0.21
 Nodes (3): ClockFormatter, ClockText, ClockFormatterTests
 
 ### Community 10 - "Encerrar Session Routine"
-Cohesion: 0.13
-Nodes (20): /encerrar skill (end-of-session routine), Step 3: handoff between computers, Step 4: pre-commit secret/security check, Step 6: summary for the user, Step 1: update CLAUDE.md, Step 2: verify Claude Code environment for real, pages workflow (publish prototype to GitHub Pages), prototype-test workflow (Playwright WebKit) (+12 more)
+Cohesion: 0.15
+Nodes (16): /encerrar skill (end-of-session routine), Step 3: handoff between computers, Step 4: pre-commit secret/security check, Step 6: summary for the user, screenshots artifact (renamed simulator prints), pages workflow (publish prototype to GitHub Pages), prototype-test workflow (Playwright WebKit), windows-test workflow (dotnet test on windows-2025) (+8 more)
 
 ### Community 12 - "Prototype Package Config"
 Cohesion: 0.12
 Nodes (11): devDependencies, @playwright/test, name, private, scripts, serve, test, type (+3 more)
 
-### Community 13 - "Fact"
-Cohesion: 0.06
-Nodes (31): IVirtualMonitor, DisplayOutput, AccessUnit, SystemProcess, Output, RecentErrors, VideoFeedFactory, OutputWait (+23 more)
+### Community 13 - "Task"
+Cohesion: 0.19
+Nodes (4): DisplayOutput, VideoFeedFactory, OutputWait, VideoFeedFactoryTests
 
 ### Community 14 - ".NET Project Setup"
 Cohesion: 0.14
@@ -167,179 +165,183 @@ Nodes (10): net10.0-windows, coverlet.collector (6.0.4), Microsoft.NET.Test.Sdk 
 
 ### Community 15 - "FakeReadStream"
 Cohesion: 0.08
-Nodes (13): BlockingStream, IsDisposed, ReadStarted, FailingStream, FakeReadStream, CanRead, CanSeek, CanWrite (+5 more)
+Nodes (10): FailingStream, FakeReadStream, CanRead, CanSeek, CanWrite, Length, Position, GatedStream (+2 more)
 
 ### Community 16 - "Prototype Rest Mode JS"
 Cohesion: 0.23
 Nodes (12): armDimTimer(), changeTrack(), fetchTemp(), keepScreenOn(), renderClock(), renderMusic(), showTemp(), start() (+4 more)
 
 ### Community 17 - "Install & Tunnel Decisions"
-Cohesion: 0.19
-Nodes (10): TelaDois-ipa artifact (TelaDois.ipa + BUILD_INFO.txt), usbmuxd USB tunnel (127.0.0.1:7100), Install on iPhone via xtool in WSL (bash -lc, USBMUXD_SOCKET_ADDRESS), INSTALACAO.md (install TelaDois on iPhone without paid account), iTunes/iCloud web installers (not Microsoft Store) for Apple Mobile Device Support, iPhone Developer Mode and trusting the Apple ID, Sideloadly install method (alternative), WSL mirrored networking so Ubuntu reaches Windows usbmuxd 127.0.0.1:27015 (+2 more)
+Cohesion: 0.16
+Nodes (11): Step 2: verify Claude Code environment for real, TelaDois-ipa artifact (TelaDois.ipa + BUILD_INFO.txt), graphify setup (graphifyy, python -m graphify, blocked exe), Install on iPhone via xtool in WSL (bash -lc, USBMUXD_SOCKET_ADDRESS), INSTALACAO.md (install TelaDois on iPhone without paid account), iTunes/iCloud web installers (not Microsoft Store) for Apple Mobile Device Support, iPhone Developer Mode and trusting the Apple ID, Sideloadly install method (alternative) (+3 more)
 
 ### Community 18 - "project.yml (XcodeGen project definition)"
-Cohesion: 0.18
+Cohesion: 0.19
 Nodes (8): Open-Meteo weather API, WeatherService (Open-Meteo + CoreLocation), project.yml (XcodeGen project definition), TelaDoisCore local package dependency, Location when-in-use permission string (for weather), Swift 5 mode with SWIFT_STRICT_CONCURRENCY complete, TelaDois application target, TelaDoisUITests target
 
 ### Community 19 - "RestScreenView"
 Cohesion: 0.10
-Nodes (6): AppSettings, RestScreenView, ScreenBrightness, .screen, TelaDoisApp, .body
+Nodes (7): AppSettings, RestScreenView, .body, ScreenBrightness, .screen, TelaDoisApp, .body
 
 ### Community 20 - "Clock Page & Battery Ring"
 Cohesion: 0.11
 Nodes (7): BatteryRingView, .body, .percent, ClockPageView, .body, Theme, SwiftUI
 
-### Community 21 - "Etapa 4: USB tunnel (done, tested on iPhone)"
-Cohesion: 0.13
-Nodes (15): Etapa 4: USB tunnel (done, tested on iPhone), Etapa 5: Segunda Tela (next: virtual monitor + FFmpeg + video), Segunda Tela (PC second monitor over USB), Virtual Display Driver (pipe MTTVirtualDisplayPipe), AppState (rest <-> secondScreen state machine), PC <-> iPhone architecture over USB (usbmuxd), CaptureEncoder (FFmpeg ddagrab + hardware H.264, libx264 fallback), DeviceWatcher (PC usbmuxd client, attach/detach) (+7 more)
+### Community 21 - "Design spec: iPhone second screen + Modo Descanso"
+Cohesion: 0.14
+Nodes (14): Step 1: update CLAUDE.md, Etapa 4: USB tunnel (done, tested on iPhone), Etapa 5: Segunda Tela (next: virtual monitor + FFmpeg + video), usbmuxd USB tunnel (127.0.0.1:7100), Virtual Display Driver (pipe MTTVirtualDisplayPipe), WSL mirrored networking so Ubuntu reaches Windows usbmuxd 127.0.0.1:27015, Design spec: iPhone second screen + Modo Descanso, PC <-> iPhone architecture over USB (usbmuxd) (+6 more)
 
 ### Community 22 - "Hotkey"
-Cohesion: 0.12
-Nodes (9): 3.1 PC (C#, `windows/src/TelaDois.Core` e `TelaDois.Tray`), KeyboardLayout, DevMode, DisplayDevice, Win32DisplayApi, Persist, CreateDXGIFactory1(), Hotkey (+1 more)
+Cohesion: 0.16
+Nodes (6): 3.1 PC (C#, `windows/src/TelaDois.Core` e `TelaDois.Tray`), KeyboardLayout, CreateDXGIFactory1(), Hotkey, Registered, KeyboardLayoutLocalTests
 
 ### Community 23 - "LinkStatsMeter"
-Cohesion: 0.10
-Nodes (8): Dispatch, DurationTally, .average, LinkStatsMeter, LinkStatsMeterTests, MainLagProbe, VideoStats, os
+Cohesion: 0.06
+Nodes (14): Dispatch, H264NALType, H264NALUnit, .isVCL, H264Parser, DurationTally, .average, LinkStatsMeter (+6 more)
 
 ### Community 25 - "EncoderProfile"
-Cohesion: 0.16
-Nodes (5): EncoderProfile, EncoderProfiles, Candidates, FfmpegArguments, FfmpegArgumentsTests
+Cohesion: 0.10
+Nodes (6): EncoderProfile, EncoderProfiles, Candidates, FfmpegArguments, LocalDriverGateTests, FfmpegArgumentsTests
 
 ### Community 26 - "ios-test workflow (swift test + XCUITest + screenshots)"
-Cohesion: 0.12
-Nodes (7): Step 5: commit and push (never force, no merge to main), ios-build workflow (unsigned Release .ipa), ios-test workflow (swift test + XCUITest + screenshots), screenshots artifact (renamed simulator prints), UI-test launch arguments (-TDFixedDate, -TDDimSeconds, ...), install-xcodegen.sh script, pick-simulator.sh script
+Cohesion: 0.14
+Nodes (5): Step 5: commit and push (never force, no merge to main), ios-build workflow (unsigned Release .ipa), ios-test workflow (swift test + XCUITest + screenshots), install-xcodegen.sh script, pick-simulator.sh script
 
 ### Community 31 - "FakeProcessRunner"
-Cohesion: 0.23
-Nodes (10): FfmpegCapture, Config, Dropped, Meters, FakeProcess, Output, RecentErrors, FakeProcessRunner (+2 more)
+Cohesion: 0.20
+Nodes (8): FfmpegCapture, Config, Dropped, Meters, BlockingStream, IsDisposed, ReadStarted, FfmpegCaptureTests
 
 ### Community 32 - "LinkSessionState"
-Cohesion: 0.24
-Nodes (4): Action, send, LinkSessionState, LinkSessionStateTests
+Cohesion: 0.20
+Nodes (5): Action, close, send, LinkSessionState, LinkSessionStateTests
 
 ### Community 33 - "TimeSpan"
-Cohesion: 0.09
-Nodes (17): 1. Objetivo, 2. Ambiente de referência, 4. Tratamento de erros, 5. Testes, 6. Riscos, Etapa 5a — Vídeo pelo cabo (monitor existente → iPhone) — Especificação de Design, Fora do escopo da 5a, FrameQueue (+9 more)
+Cohesion: 0.08
+Nodes (20): 1. Objetivo, 2. Ambiente de referência, 3.1 PC (C#, `windows/src/TelaDois.Core`), 3.3 Protocolo (os dois lados; bytes de referência nos testes de Swift e C#), 3. Arquitetura, 4. Tratamento de erros, 5. Testes, 6. Riscos (+12 more)
 
 ### Community 34 - "TelaDoisCore"
 Cohesion: 0.16
 Nodes (7): AVFoundation, CoreLocation, Network, Observation, TelaDoisCore, UIKit, XCTest
 
 ### Community 35 - "IReadOnlyList"
-Cohesion: 0.25
-Nodes (6): ProcessStopper, IProcessRunner, IRunningProcess, Output, RecentErrors, SystemProcessRunner
+Cohesion: 0.11
+Nodes (10): ProcessStopper, IProcessRunner, IRunningProcess, Output, RecentErrors, SystemProcess, Output, RecentErrors (+2 more)
 
 ### Community 36 - "VirtualDisplay"
-Cohesion: 0.22
-Nodes (6): IDriverPipe, DisplayChangeException, Code, VirtualDisplay, NoPipe, VirtualDisplayTests
+Cohesion: 0.06
+Nodes (25): IDeviceSwitch, DisplayBounds, DisplayChangeException, Code, DisplayDeviceInfo, DisplayModeInfo, IDisplayApi, VirtualDisplay (+17 more)
 
 ### Community 37 - "VideoConfig"
-Cohesion: 0.12
-Nodes (7): LinkFrame, MessageType, LinkFrameDecoder, LinkMessages, LinkStats, VideoConfig, LinkProtocolTests
+Cohesion: 0.10
+Nodes (6): LinkFrame, MessageType, LinkFrameDecoder, LinkMessages, LinkStats, LinkProtocolTests
 
 ### Community 39 - "LinkFrame"
-Cohesion: 0.15
-Nodes (5): bigEndianBytes(), LinkFrame, LinkStats, .fields, LinkProtocolTests
+Cohesion: 0.13
+Nodes (4): bigEndianBytes(), LinkStats, .fields, LinkProtocolTests
 
 ### Community 40 - "MonitorMode"
-Cohesion: 0.17
-Nodes (6): MonitorMode, IsConnected, WantsVideo, IVideoSwitch, WantsVideo, MonitorModeTests
+Cohesion: 0.14
+Nodes (10): MonitorMode, IsConnected, WantsVideo, ToggleResult, NoPhone, TurnedOff, TurnedOn, IVideoSwitch (+2 more)
 
 ### Community 41 - "LinkProtocol"
-Cohesion: 0.12
-Nodes (9): 3.2 iPhone (Swift), LinkDecodeError, payloadTooLarge, LinkFrameDecoder, LinkHello, LinkProtocol, LinkVideoConfig, LinkVideoFrame (+1 more)
-
-### Community 42 - "LinkSession.cs"
 Cohesion: 0.17
-Nodes (5): LinkEndReason, Bye, Cancelled, Closed, Timeout
+Nodes (6): 3.2 iPhone (Swift), LinkFrame, LinkFrameDecoder, LinkProtocol, LinkVideoFrame, readBigEndian()
 
-### Community 43 - "TelaDois.Core.Display"
-Cohesion: 0.14
-Nodes (4): TelaDois.Core.Tests.Display, TelaDois.Core.Display, KeyboardLayoutLocalTests, VirtualDisplayLocalTests
+### Community 42 - "LinkSessionOptions"
+Cohesion: 0.15
+Nodes (10): LinkEndReason, Bye, Cancelled, Closed, Timeout, LinkSession, LinkSessionOptions, Default (+2 more)
 
 ### Community 44 - "TelaDois.Core.Video"
-Cohesion: 0.20
-Nodes (3): TelaDois.Core.Tests.Video, TelaDois.Core.Video, FfmpegLocator
+Cohesion: 0.06
+Nodes (13): TelaDois.Core, TelaDois.Core.Tests.Display, TelaDois.Core.Link, TelaDois.Core.Tests.Fakes, TelaDois.Core.Tests, TelaDois.Core.Tests.Video, TelaDois.Core.Video, TelaDois.Core.Display (+5 more)
 
-### Community 45 - "TelaDois.Core.Tests.Fakes"
-Cohesion: 0.25
-Nodes (3): TelaDois.Core.Tests.Fakes, TelaDois.Core.Usbmux, Loopback
+### Community 45 - "LinkProtocol.swift"
+Cohesion: 0.19
+Nodes (10): AppState (rest <-> secondScreen state machine), CaptureEncoder (FFmpeg ddagrab + hardware H.264, libx264 fallback), PC<->iPhone protocol (HELLO, CONFIG, VIDEO, KEYFRAME_REQ, PING/PONG, BYE), StreamPlayer (H.264 decode via VideoToolbox), StreamSender (opens tunnel, sends messages, measures latency), UsbLink (iPhone listener on port 7100), LinkDecodeError, payloadTooLarge (+2 more)
 
 ### Community 46 - "DriverPipe"
 Cohesion: 0.37
 Nodes (3): DriverPipe, Timeout, DriverPipeTests
 
 ### Community 47 - "LinkMessageType"
-Cohesion: 0.20
-Nodes (10): LinkMessageType, Bye, Config, Hello, KeyframeRequest, Ping, Pong, Stats (+2 more)
+Cohesion: 0.18
+Nodes (11): LinkMessageType, Bye, Config, Hello, KeyframeRequest, Ping, Pong, Screen (+3 more)
+
+### Community 48 - "Foundation"
+Cohesion: 0.21
+Nodes (3): Darwin, Foundation, FakePC
 
 ### Community 50 - "EncoderProbe"
-Cohesion: 0.28
-Nodes (3): EncoderProbe, ProbeTimeout, EncoderProbeTests
+Cohesion: 0.24
+Nodes (8): EncoderProbe, ProbeTimeout, FakeProcess, Output, RecentErrors, FakeProcessRunner, Started, EncoderProbeTests
 
 ### Community 52 - "TrayContext"
-Cohesion: 0.06
-Nodes (17): FileLog, TunnelStatusText, TunnelState, Connected, ServiceMissing, WaitingForApp, WaitingForIPhone, TunnelStatus (+9 more)
+Cohesion: 0.18
+Nodes (3): FileLog, TrayContext, FileLogTests
 
-### Community 53 - "GatedFeed"
-Cohesion: 0.20
-Nodes (6): GatedFeed, Config, Disposed, FirstFrameMisses, Kind, Release
-
-### Community 54 - "TrayContext.cs"
-Cohesion: 0.17
-Nodes (3): TelaDois.Core, TelaDois.Tray, OutputDesc
+### Community 53 - "IVideoFeed"
+Cohesion: 0.08
+Nodes (25): LinkStatus, IVideoFeed, Config, Kind, Meters, VideoKind, Extend, Mirror (+17 more)
 
 ### Community 55 - ".ReadAll"
-Cohesion: 0.15
-Nodes (7): 3.1 PC (C#, `windows/src/TelaDois.Core`), 3.3 Protocolo (os dois lados; bytes de referência nos testes de Swift e C#), 3. Arquitetura, AccessUnitReader, H264, AccessUnitReaderTests, TrickleStream
+Cohesion: 0.18
+Nodes (4): AccessUnitReader, H264, AccessUnitReaderTests, TrickleStream
 
 ### Community 56 - "LinkSession"
-Cohesion: 0.14
-Nodes (11): 1. Objetivo, 2. O driver (lido no código-fonte da release 25.7.23), 3.3 Protocolo (os dois lados; bytes de referência nos testes de Swift e C#), 3. Arquitetura, 4. Tratamento de erros (Parte 3, aprovada), 5. Testes, 6. Riscos, Comportamento (Parte 1, aprovada) (+3 more)
+Cohesion: 0.18
+Nodes (10): 1. Objetivo, 2. O driver (lido no código-fonte da release 25.7.23), 3.3 Protocolo (os dois lados; bytes de referência nos testes de Swift e C#), 3. Arquitetura, 5. Testes, 6. Riscos, Comportamento (Parte 1, aprovada), Etapa 5b — Monitor estendido (monitor virtual) + atalho — Especificação de Design (+2 more)
 
-### Community 59 - "FakeDisplayApi"
+### Community 57 - "FakeVirtualMonitor"
+Cohesion: 0.12
+Nodes (16): FakeVirtualMonitor, Attached, AttachError, AttachTakes, Calls, CanPowerOff, Detached, Device (+8 more)
+
+### Community 58 - "Etapa 5c — o 3º monitor some quando desligado + tela preta no iPhone — Especificação de Design"
+Cohesion: 0.14
+Nodes (13): 1. Objetivos, 2.1 Medições que sustentam a decisão (driver 25.7.23, PC Intel, 2026-10-20), 2.2 Instalador (`tools/vdd/instalar-vdd.ps1`, administrador, uma vez por PC), 2.3 TelaDois (sem administrador), 2.4 Riscos a validar no 1º passo do plano (driver real), 2. Parte A — o monitor só existe enquanto está em uso, 3.1 Protocolo (Swift e C#, bytes de referência nos dois testes), 3.2 PC (+5 more)
+
+### Community 59 - "Win32DisplayApi"
 Cohesion: 0.21
-Nodes (8): DisplayBounds, IDisplayApi, FakeDisplayApi, Applied, BoundsList, DeviceList, ModeList, Result
+Nodes (5): 4. Tratamento de erros (Parte 3, aprovada), DevMode, DisplayDevice, Win32DisplayApi, Persist
 
-### Community 60 - "RestScreen (Clock and Music pages)"
-Cohesion: 0.22
-Nodes (8): Etapa 2: native Modo Descanso (done), Etapa 3: Spotify (deferred), Modo Descanso (StandBy-style rest mode), Behavior tokens (60 s dim with 1.2 s fade, wake tap does not press buttons), BatteryService (UIDevice), DimController (60 s inactivity, black screen, brightness 0), RestScreen (Clock and Music pages), SpotifyService (App Remote SDK)
-
-### Community 63 - "SlowToDisposeFeed"
+### Community 60 - "TelaDois app (iPhone second screen + standby)"
 Cohesion: 0.33
-Nodes (5): SlowToDisposeFeed, Config, Disposals, Disposed, Kind
+Nodes (4): Etapa 2: native Modo Descanso (done), Modo Descanso (StandBy-style rest mode), Segunda Tela (PC second monitor over USB), TelaDois app (iPhone second screen + standby)
 
-### Community 66 - "ToggleResult"
+### Community 61 - "TraySettings"
+Cohesion: 0.17
+Nodes (5): TelaDois.Tray, Program, TraySettings, FilePath, Monitor
+
+### Community 62 - "VideoConfig"
+Cohesion: 0.27
+Nodes (4): VideoConfig, FixedFeed, Config, Disposed
+
+### Community 64 - "Fact"
+Cohesion: 0.16
+Nodes (4): FileRecorder, Files, ScheduledTaskSwitchTests, DisplayCatalogTests
+
+### Community 66 - "TunnelState"
 Cohesion: 0.40
-Nodes (4): ToggleResult, NoPhone, TurnedOff, TurnedOn
-
-### Community 67 - "HelloInfo"
-Cohesion: 0.14
-Nodes (7): HelloInfo, LinkSession, LinkStatus, VideoKind, Extend, Mirror, FakePhone
-
-### Community 68 - "EndlessFeed"
-Cohesion: 0.50
-Nodes (3): EndlessFeed, Config, Disposed
+Nodes (5): TunnelState, Connected, ServiceMissing, WaitingForApp, WaitingForIPhone
 
 ## Knowledge Gaps
-- **147 isolated node(s):** `PackageDescription`, `passThrough`, `wokeUp`, `.isVCL`, `hello` (+142 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 294 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **18 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **164 isolated node(s):** `PackageDescription`, `passThrough`, `wokeUp`, `.isVCL`, `hello` (+159 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 320 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **15 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `LinkSessionState` connect `LinkSessionState` to `LinkProtocol`, `UsbLink`, `LinkSession`, `Foundation`, `VideoRenderer`?**
-  _High betweenness centrality (0.206) - this node is a cross-community bridge._
-- **Are the 27 inferred relationships involving `MonitorMode` (e.g. with `3.1 PC (C#, `windows/src/TelaDois.Core` e `TelaDois.Tray`)` and `4. Tratamento de erros (Parte 3, aprovada)`) actually correct?**
-  _`MonitorMode` has 27 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `LinkSessionState` connect `LinkSessionState` to `UsbLink`, `Foundation`, `LinkStatsMeter`, `LinkSession`, `Etapa 5c — o 3º monitor some quando desligado + tela preta no iPhone — Especificação de Design`?**
+  _High betweenness centrality (0.213) - this node is a cross-community bridge._
+- **Are the 24 inferred relationships involving `FakeVirtualMonitor` (e.g. with `.TurningOnAgainWhileTheOldFeedDetachesKeepsTheSameVirtualMonitorOn()` and `.AttachFailureFallsBackToMirror()`) actually correct?**
+  _`FakeVirtualMonitor` has 24 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `PackageDescription`, `passThrough`, `wokeUp` to the rest of the system?**
-  _147 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _164 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `FakeUsbmuxd` be split into smaller, more focused modules?**
-  _Cohesion score 0.061122538936232734 - nodes in this community are weakly interconnected._
-- **Why does `5. Testes` connect `LinkSession` to `LinkSessionState`, `HelloInfo`, `VirtualDisplay`, `MonitorMode`, `.ReadAll`, `FakeDisplayApi`?**
-  _High betweenness centrality (0.205) - this node is a cross-community bridge._
-- **Are the 30 inferred relationships involving `FakeProcessRunner` (e.g. with `.AlreadyCancelledTokenStartsNothing()` and `.CancellingDuringWaitDisposesRunningProcess()`) actually correct?**
-  _`FakeProcessRunner` has 30 INFERRED edges - model-reasoned connections that need verification._
+  _Cohesion score 0.05605124685426676 - nodes in this community are weakly interconnected._
+- **Why does `5. Testes` connect `LinkSession` to `LinkSessionState`, `VirtualDisplay`, `MonitorMode`, `LinkSessionOptions`, `.ReadAll`?**
+  _High betweenness centrality (0.200) - this node is a cross-community bridge._
+- **Are the 18 inferred relationships involving `VirtualDisplay` (e.g. with `3.1 PC (C#, `windows/src/TelaDois.Core` e `TelaDois.Tray`)` and `5. Testes`) actually correct?**
+  _`VirtualDisplay` has 18 INFERRED edges - model-reasoned connections that need verification._
 - **Should `Open-Meteo Weather` be split into smaller, more focused modules?**
-  _Cohesion score 0.09885057471264368 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.13438735177865613 - nodes in this community are weakly interconnected._

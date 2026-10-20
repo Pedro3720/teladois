@@ -42,9 +42,9 @@
     "semantic_hash": "a7256e32c6dc2b61659febf8baeb2ffa"
   },
   "ios/Packages/TelaDoisCore/Sources/TelaDoisCore/LinkProtocol.swift": {
-    "mtime": 1792514568.6084042,
-    "seen": 1792522916.9460545,
-    "ast_hash": "473b8c008f9289477e245ab620895775",
+    "mtime": 1792527322.3592377,
+    "seen": 1792528320.10715,
+    "ast_hash": "8ec05a1be76dad487882d080627b4a09",
     "semantic_hash": ""
   },
   "ios/Packages/TelaDoisCore/Sources/TelaDoisCore/LinkSessionState.swift": {
@@ -72,15 +72,15 @@
     "semantic_hash": "00a29deb6183583006ea4a92a780027c"
   },
   "ios/Packages/TelaDoisCore/Tests/TelaDoisCoreTests/LinkProtocolTests.swift": {
-    "mtime": 1792513840.6183813,
-    "seen": 1792522916.9460716,
-    "ast_hash": "6c1ac1a43c6b6ae337ad1bd2258a0fb1",
+    "mtime": 1792527264.4912918,
+    "seen": 1792528320.1071901,
+    "ast_hash": "f764aded1d5ed482ea488da379045b3e",
     "semantic_hash": ""
   },
   "ios/Packages/TelaDoisCore/Tests/TelaDoisCoreTests/LinkSessionStateTests.swift": {
-    "mtime": 1792513840.6213562,
-    "seen": 1792522916.946073,
-    "ast_hash": "c706c7974759b3d76447eba1357bc5fa",
+    "mtime": 1792527264.6472628,
+    "seen": 1792528320.107196,
+    "ast_hash": "9db9abad0ff6f8128b04d0d8198d4c15",
     "semantic_hash": ""
   },
   "ios/Packages/TelaDoisCore/Tests/TelaDoisCoreTests/OpenMeteoTests.swift": {
@@ -228,9 +228,9 @@
     "semantic_hash": "c0b280d944ccffb8c72cb50d5a42deb3"
   },
   "windows/src/TelaDois.Core/Link/LinkFrame.cs": {
-    "mtime": 1792514117.0096762,
-    "seen": 1792522916.9461477,
-    "ast_hash": "9a9d339eb794cc69f558d79769ab0e55",
+    "mtime": 1792527322.0276055,
+    "seen": 1792528320.1073484,
+    "ast_hash": "59473890802f6615eedf49c8e1954815",
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Link/LinkFrameDecoder.cs": {
@@ -246,9 +246,9 @@
     "semantic_hash": "e04c62dd0f1597150c0a29d4d0514ced"
   },
   "windows/src/TelaDois.Core/Link/LinkMessages.cs": {
-    "mtime": 1792514131.7485788,
-    "seen": 1792522916.9461532,
-    "ast_hash": "0dc0df8315526d458ac5d8259e2dde31",
+    "mtime": 1792527322.1538672,
+    "seen": 1792528320.1073587,
+    "ast_hash": "b6a77ec40e2e12aecddf85d24bd0797a",
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Link/LinkSession.cs": {
@@ -336,15 +336,15 @@
     "semantic_hash": "92da0eee7d25c0075122e87d49a841d2"
   },
   "windows/tests/TelaDois.Core.Tests/LinkProtocolTests.cs": {
-    "mtime": 1792513947.8762257,
-    "seen": 1792522916.9462347,
-    "ast_hash": "76d4653a91a585d36ba798ff15d18e83",
+    "mtime": 1792527264.3118927,
+    "seen": 1792528320.1075382,
+    "ast_hash": "9a0b6d68df08830160b3d04cfd0a6f44",
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/LinkSessionTests.cs": {
-    "mtime": 1792514042.075514,
-    "seen": 1792522916.9462364,
-    "ast_hash": "c2994cb003d7c2f5e93be2af1e31d5bc",
+    "mtime": 1792526850.1645699,
+    "seen": 1792528320.1075418,
+    "ast_hash": "5e97eb4aa4c9ad819c4c869532926f3d",
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/PlistTests.cs": {
@@ -414,9 +414,9 @@
     "semantic_hash": "b1858307de87f9f32b82c0b6de7a1756"
   },
   "CLAUDE.md": {
-    "mtime": 1792510792.037549,
-    "seen": 1792512748.7946708,
-    "ast_hash": "f07330a461574d6252814bc88e3e2fe4",
+    "mtime": 1792528272.394365,
+    "seen": 1792528320.1076612,
+    "ast_hash": "6ca08df45485b454157ce592f70e39f5",
     "semantic_hash": ""
   },
   "README.md": {
@@ -438,9 +438,9 @@
     "semantic_hash": "4bafee2976ada8ad3163df7027015bc5"
   },
   "docs/superpowers/specs/2026-10-16-iphone-segunda-tela-descanso-design.md": {
-    "mtime": 1792494331.7879379,
-    "seen": 1792507073.601076,
-    "ast_hash": "5e14b7394dd9ea70e54bc73b0390007f",
+    "mtime": 1792528258.1447182,
+    "seen": 1792528320.1076837,
+    "ast_hash": "ca104d167f7ad914d77c2e643e5cd797",
     "semantic_hash": ""
   },
   "ios/project.yml": {
@@ -594,9 +594,9 @@
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Video/VideoFeedFactory.cs": {
-    "mtime": 1792511003.2788262,
-    "seen": 1792512748.7944322,
-    "ast_hash": "0692fd3546cb3570e97a9c1b06b06d3c",
+    "mtime": 1792528141.41651,
+    "seen": 1792528320.107427,
+    "ast_hash": "b504225ef1eeea0b9d12f5de16f2e86b",
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Tray/TraySettings.cs": {
@@ -612,9 +612,9 @@
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/Video/VideoFeedFactoryTests.cs": {
-    "mtime": 1792510883.4399943,
-    "seen": 1792512748.794618,
-    "ast_hash": "49d4c42845fb202a35622bbc451c05b0",
+    "mtime": 1792528028.920956,
+    "seen": 1792528320.107599,
+    "ast_hash": "ebb7b09435594027e836ff0dce2e148a",
     "semantic_hash": ""
   },
   "ios/TelaDois/SecondScreenView.swift": {
@@ -636,9 +636,9 @@
     "semantic_hash": ""
   },
   "tools/vdd/instalar-vdd.ps1": {
-    "mtime": 1792506712.807273,
-    "seen": 1792507073.6009364,
-    "ast_hash": "7739fbdf46c470cea72757e3613e61cb",
+    "mtime": 1792527223.8710282,
+    "seen": 1792528320.1072981,
+    "ast_hash": "8f37551b0cfd6e0728336264eddf903e",
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Display/DriverPipe.cs": {
@@ -654,9 +654,9 @@
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Display/IVirtualMonitor.cs": {
-    "mtime": 1792506551.1009767,
-    "seen": 1792507073.6009471,
-    "ast_hash": "9aae3894bbf69bf1897e2acc3a1b2eeb",
+    "mtime": 1792526839.7832692,
+    "seen": 1792528320.1073227,
+    "ast_hash": "0d220bbeea8b3346b20d5e59ab772797",
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Display/KeyboardLayout.cs": {
@@ -672,9 +672,9 @@
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Display/VirtualDisplay.cs": {
-    "mtime": 1792511109.0123744,
-    "seen": 1792512748.7942796,
-    "ast_hash": "5349f9f5d8b7e13661a29cf76562d7ac",
+    "mtime": 1792526839.7832692,
+    "seen": 1792528320.107335,
+    "ast_hash": "436c0bf52543cb2a96f5a0702bd34217",
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Display/Win32DisplayApi.cs": {
@@ -690,9 +690,9 @@
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Video/VirtualMonitorFeed.cs": {
-    "mtime": 1792514195.7862685,
-    "seen": 1792522916.9461963,
-    "ast_hash": "65ea6f082c61c627a98196928387688e",
+    "mtime": 1792528141.4205334,
+    "seen": 1792528320.1074371,
+    "ast_hash": "d9917b9003ea3b0fb1ac6fdf8aea669a",
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Tray/Hotkey.cs": {
@@ -732,33 +732,33 @@
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/Display/VirtualDisplayLocalTests.cs": {
-    "mtime": 1792510763.5130997,
-    "seen": 1792512748.7944956,
-    "ast_hash": "8c59d88d3e3d4dc8793837e2b052ae2e",
+    "mtime": 1792528168.4588058,
+    "seen": 1792528320.1074831,
+    "ast_hash": "c0956244f6b133a83ea4acc7e076e441",
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/Display/VirtualDisplayTests.cs": {
-    "mtime": 1792511081.5190668,
-    "seen": 1792512748.7945006,
-    "ast_hash": "32a7077d59e1a0f5268292ced6027aa2",
+    "mtime": 1792526743.9213915,
+    "seen": 1792528320.107488,
+    "ast_hash": "f5730a39b3d2deab7a98135048dddf8b",
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/Fakes/FakeDisplayApi.cs": {
-    "mtime": 1792500020.518144,
-    "seen": 1792507073.6010203,
-    "ast_hash": "16fd2f841df16493ab6c32016b50bf95",
+    "mtime": 1792526706.9754162,
+    "seen": 1792528320.1074972,
+    "ast_hash": "15886e774cb163fd64b7ed0be7f99666",
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/Fakes/FakeVirtualMonitor.cs": {
-    "mtime": 1792506541.8634133,
-    "seen": 1792507073.601027,
-    "ast_hash": "f2483e9a4219aa7bfc614e9d9be78427",
+    "mtime": 1792527959.711944,
+    "seen": 1792528320.1075203,
+    "ast_hash": "437679838f00a17fe2cc347818b7a6e1",
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/Video/VirtualMonitorFeedTests.cs": {
-    "mtime": 1792506436.4107728,
-    "seen": 1792507073.601055,
-    "ast_hash": "92ebc1ef5a72e2c7bf9069d251871ab6",
+    "mtime": 1792528028.920956,
+    "seen": 1792528320.1076164,
+    "ast_hash": "a5d46390ef25ba4e263eaa37e854cb87",
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/FileLog.cs": {
@@ -813,6 +813,36 @@
     "mtime": 1792513948.8207297,
     "seen": 1792522916.9462638,
     "ast_hash": "280afcf14695cae15f1411ce006d8910",
+    "semantic_hash": ""
+  },
+  "windows/src/TelaDois.Core/Display/IDeviceSwitch.cs": {
+    "mtime": 1792526771.2072148,
+    "seen": 1792528320.1073158,
+    "ast_hash": "061504650e89915119c541f3f9fcefa6",
+    "semantic_hash": ""
+  },
+  "windows/src/TelaDois.Core/Display/ScheduledTaskSwitch.cs": {
+    "mtime": 1792526771.3105001,
+    "seen": 1792528320.1073318,
+    "ast_hash": "4ac059bf7ea021ee76fbdb009f83dc11",
+    "semantic_hash": ""
+  },
+  "windows/tests/TelaDois.Core.Tests/Display/ScheduledTaskSwitchTests.cs": {
+    "mtime": 1792526694.2978356,
+    "seen": 1792528320.1074774,
+    "ast_hash": "8cf767d0386a3f2c3bcaf0113bd03fc8",
+    "semantic_hash": ""
+  },
+  "windows/tests/TelaDois.Core.Tests/Fakes/FakeDeviceSwitch.cs": {
+    "mtime": 1792526694.1842692,
+    "seen": 1792528320.1074922,
+    "ast_hash": "10baeba41010c75a56788d8e92179669",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-10-20-etapa-5c-monitor-some-e-tela-preta-design.md": {
+    "mtime": 1792526028.812512,
+    "seen": 1792528320.1077006,
+    "ast_hash": "a998fb4fb87230106910a5d63422abf4",
     "semantic_hash": ""
   }
 }

@@ -37,7 +37,8 @@ App de iPhone que (1) vira **segunda tela do PC Windows via cabo USB** e (2) tem
   - `tests/TelaDois.Core.Tests/` — xUnit com usbmuxd e iPhone falsos (`Fakes/`)
 - `.github/workflows/` — `ios-test.yml`, `ios-build.yml`, `windows-test.yml`, `prototype-test.yml`, `pages.yml`
 - `.github/scripts/` — instalar XcodeGen, escolher simulador, renomear prints
-- `tools/` — scripts de instalação: `wsl/instalar-xtool.sh`; na Etapa 5b, `vdd/instalar-vdd.ps1` + `vdd/vdd_settings.xml` (Task 1 do plano)
+- `tools/` — scripts de instalação: `wsl/instalar-xtool.sh`; `vdd/instalar-vdd.ps1` + `vdd/vdd_settings.xml` (Virtual Display Driver, tarefas `\TelaDois\` que ligam/desligam o dispositivo; rodar como administrador uma vez por PC e de novo quando o script mudar)
+- `windows/src/TelaDois.Core/Display/` — monitor virtual (`VirtualDisplay`, `Win32DisplayApi`, `DriverPipe`, `ScheduledTaskSwitch`), `MonitorMode` (liga/desliga), `KeyboardLayout`
 - `docs/` — especificação, planos, design, `INSTALACAO.md`
 - `builds/` — (ignorado pelo git) `.ipa` entregue ao usuário
 
@@ -66,7 +67,7 @@ O projeto tem um grafo de conhecimento em `graphify-out/` (código pela AST + sp
 - Não há Mac. Nunca rode `xcodebuild`/`xcodegen`/`swift` localmente. O código iOS é verificado **só** pelo GitHub Actions.
 - O `.xcodeproj` é gerado a partir de `ios/project.yml` (XcodeGen). Nunca versione o `.xcodeproj`.
 - Trabalhar em branch (`etapa-N-...`) e só juntar ao `main` (fast-forward) com `ios-test`, `ios-build` **e** `windows-test` verdes no SHA final.
-- O protocolo PC ↔ iPhone existe em Swift (`TelaDoisCore/LinkProtocol.swift`) e em C# (`TelaDois.Core/Link/`). Mudou um lado, mude o outro e os **bytes de referência** nos dois testes (`HELLO(2556,1179)` = `010000000A0001000009FC0000049B`; `PING(1234567890123)` = `05000000080000011F71FB04CB`; `CONFIG(1366,768,60)` = `020000000A0000055600000300003C`; `VIDEO(completa, 1000 µs, 0000000109F0)` = `030000000F0100000000000003E80000000109F0`; na 5b entra `VIDEO_END` = `0800000000`).
+- O protocolo PC ↔ iPhone existe em Swift (`TelaDoisCore/LinkProtocol.swift`) e em C# (`TelaDois.Core/Link/`). Mudou um lado, mude o outro e os **bytes de referência** nos dois testes (`HELLO(2556,1179)` = `010000000A0001000009FC0000049B`; `PING(1234567890123)` = `05000000080000011F71FB04CB`; `CONFIG(1366,768,60)` = `020000000A0000055600000300003C`; `VIDEO(completa, 1000 µs, 0000000109F0)` = `030000000F0100000000000003E80000000109F0`; `VIDEO_END` = `0800000000`; `STATS`(1..9) = `0900000024000000010000000200000003000000040000000500000006000000070000000800000009`; `SCREEN(1)` = `0A0000000101`, `SCREEN(0)` = `0A0000000100`).
 - Espera do CI: não confie no código de saída do `gh run watch` (deu "falha" com a execução verde no PC de casa); confirme com `gh run view <id> --json status,conclusion`.
 - Um push com mudança em `ios/**` cancela o `ios-test` que estiver rodando no mesmo branch (`cancel-in-progress`). Para ver o "vermelho" do TDD no CI, espere a execução anterior terminar antes de enviar a implementação.
 - Antes de concluir que algo "não funciona no iPhone", confirme que a versão nova **foi instalada** (o instalador terminou com sucesso). Na Etapa 4 o túnel parecia quebrado, mas era a versão antiga aberta: o Sideloadly tinha falhado no login.
@@ -109,45 +110,47 @@ O projeto tem um grafo de conhecimento em `graphify-out/` (código pela AST + sp
 | PC reinsere SPS/PPS antes de toda IDR (`AccessUnitReader`, correção I3) | Medido em 2026-10-19 no PC AMD: `h264_amf` manda SPS/PPS só na 1ª IDR (1 de 3); se a fila descartar a 1ª imagem o iPhone ficaria preto. `-header_spacing` resolveria só o AMF; no leitor vale para qualquer compressão |
 | `CONFIG` só junto com a 1ª imagem (I1) e `VIDEO_END` (tipo 8) para desligar sem desconectar | Uma captura que falha logo deixava o iPhone preto na Segunda Tela; o atalho precisa voltar o iPhone ao relógio com o cabo ligado |
 | Atalho **Win+Shift+]** para ligar/desligar o modo monitor | Decisão do usuário em 2026-10-19: "]" sozinha impediria digitar "]"/"}" em todos os programas |
+| Ligar o monitor virtual **gravando no registro** (`CDS_UPDATEREGISTRY`) | Medido em 2026-10-20: sem gravar, o driver 25.7.23 recusa (`DISP_CHANGE_FAILED`) com o monitor fora do desktop |
+| Vídeo sempre com largura e altura **pares** (corte de 1 linha) | A altura do iPhone 15/16 (1179) é ímpar; `libx264` e `h264_mf` recusam (medido em 2026-10-20) |
+| Etapa 5c: monitor **desativado** quando não usado, por **tarefas agendadas** `\TelaDois\` (SYSTEM, liberadas ao grupo Usuários) | Decisão do usuário em 2026-10-20: só desativar o dispositivo tira o "3" de Configurações; precisa de administrador, então o instalador cria as tarefas uma vez (recusados: serviço sempre rodando; trocar para o Parsec VDD) |
+| Tela preta no iPhone por **Win+Shift+[** + mensagem `SCREEN` (tipo 10, nos dois sentidos) | Decisão do usuário em 2026-10-20: apagar só o iPhone com o monitor funcionando; 1 toque acende (o iPhone avisa o PC) |
+| Medidores `STATS` (tipo 9) + linha `vídeo/s` no registro, antes de mexer no atraso | 2026-10-20: mostraram que cabo e iPhone não são o gargalo (fila/escrita 1 ms, RTT 3 ms); **Wi-Fi descartado** (mais atraso e oscilação) |
 
-## Estado atual (atualizado em 2026-10-19)
+## Estado atual (atualizado em 2026-10-20)
 **Pronto**
 - Etapa 0 — Fundação: repositório, CI, app "Olá" gerado e inspecionado.
 - Etapa 1 — Design: protótipo aprovado e publicado, ícone (Canva, opção "celular + monitor"), tokens em `docs/design/tokens.md`.
-- Etapa 2 — Modo Descanso nativo: pacote `TelaDoisCore` (`DimState`, `ClockFormatter`, `OpenMeteo`, 13 testes); página do relógio (hora, "QUA., 14", temperatura, anel de bateria); tela preta + brilho 0 após 60 s, tela sempre ligada, acordar com 1 toque (fade só ao escurecer; acordar é instantâneo). Prints `01`–`03` revisados. Plano: `docs/superpowers/plans/2026-10-16-etapa-2-descanso-nativo.md`.
-- **Primeira instalação no iPhone em 2026-10-18** (cabo de dados, Sideloadly, build do `9cce6d6`): instalou e abriu. Modo Desenvolvedor e confiança no Apple ID já feitos; renovar a cada 7 dias.
-- Etapa 4 — Túnel USB (2026-10-18): app do iPhone escuta em `127.0.0.1:7100`, manda `HELLO`, responde `PING`; `TelaDois.exe` na bandeja detecta o iPhone, abre o túnel pelo usbmuxd, mede a latência e reconecta sozinho. **Testado no iPhone pelo cabo** (build 24 do `45528d9`, instalado pelo xtool): "PC conectado" no iPhone, `conectado · 2556×1179 · poucos ms` na bandeja, reconexão ao sair/voltar do app e ao tirar/colocar o cabo. 33 testes no PC + 26 no pacote + 5 de UI. Plano: `docs/superpowers/plans/2026-10-18-etapa-4-tunel-usb.md`.
+- Etapa 2 — Modo Descanso nativo: pacote `TelaDoisCore` (`DimState`, `ClockFormatter`, `OpenMeteo`); página do relógio (hora, "QUA., 14", temperatura, anel de bateria); tela preta + brilho 0 após 60 s, tela sempre ligada, acordar com 1 toque. Prints `01`–`03` revisados. Plano: `docs/superpowers/plans/2026-10-16-etapa-2-descanso-nativo.md`.
+- Etapa 4 — Túnel USB (2026-10-18): app do iPhone escuta em `127.0.0.1:7100`, `HELLO`/`PING`; `TelaDois.exe` na bandeja detecta o iPhone, abre o túnel pelo usbmuxd e reconecta sozinho. Testado no iPhone. Plano: `docs/superpowers/plans/2026-10-18-etapa-4-tunel-usb.md`.
+- **Etapa 5a — Vídeo pelo cabo (duplicar)** e **Etapa 5b — Monitor estendido + Win+Shift+]**: código pronto e revisado no branch **`etapa-5b-monitor-virtual`** (contém a 5a; nenhum dos dois foi para o `main`). **Testado no iPhone em 2026-10-20 no PC do trabalho (Intel, QSV)**: o 3º monitor aparece em Estender na resolução do iPhone (2556×1179@60, à direita do principal), Win+Shift+] liga/desliga, tirar o cabo volta ao relógio. O usuário: "as funcionalidades deram certo". Specs `docs/superpowers/specs/2026-10-19-etapa-5a-…` e `…-5b-monitor-virtual-design.md`; planos em `docs/superpowers/plans/2026-10-19-…`.
+  - Achados no driver real (2026-10-20, viraram correções já commitadas): o `PING` do pipe precisa terminar em NUL (`"PING\0"` em UTF-16) e o driver às vezes fecha sem responder (até 3 tentativas); ligar o monitor **sem** gravar no registro falha (`DISP_CHANGE_FAILED`) — o TelaDois grava; a altura 1179 é ímpar e `libx264`/`h264_mf` (e o caminho do `amf-download`) recusam — todos os perfis cortam para par (QSV com `vpp_qsv`); o nome `\\.\DISPLAYn` do monitor virtual muda a cada vez (sempre usar `Find()`); adaptador do driver = `Virtual Display Driver`.
+  - Medidores (mensagem `STATS`, tipo 9, iPhone → PC, e 1 linha por segundo no registro `vídeo/s: …`): no teste de 7 min o cabo e o iPhone estão rápidos (fila 1 ms, escrita 1 ms, RTT 3 ms, iPhone 2 ms, 0 descartes no iPhone). O atraso que sobra está **na captura + compressão ou na exibição no iPhone**. Descartado: buffer do stdout do FFmpeg (1 leitura por imagem).
 
-**Em andamento**
-- **Etapa 5a — Vídeo pelo cabo (duplicar um monitor existente)**, branch **`etapa-5a-video`** (código até `1b7f5f4`; `ios-test`, `ios-build` e `windows-test` verdes nele). Spec `docs/superpowers/specs/2026-10-19-etapa-5a-video-pelo-cabo-design.md`, plano `docs/superpowers/plans/2026-10-19-etapa-5a-video-pelo-cabo.md`. 97 testes no PC, 34 no pacote, 6 de UI (prints `05-segunda-tela`, `06-volta-descanso`).
-  - **Testada no iPhone em 2026-10-19 no PC Intel** (build 33 do `1b7f5f4`, xtool): `compressão escolhida: qsv-hwmap (h264_qsv)` ~1,5 s depois do túnel; `\\.\DISPLAY1` 1366×768 aparece no iPhone; tirar/pôr o cabo volta ao relógio e reconecta; nenhum `ffmpeg.exe` sobra. O usuário: "funcionou perfeitamente". Não medido: latência com foto do cronômetro.
-  - Visto no registro: ao mexer na configuração de vídeo do Windows, o `ddagrab` dá `AcquireNextFrame failed: 887a0026` / `Failed to enumerate DXGI output 1` e o FFmpeg reinicia (1/2/5 s) até o monitor voltar. Esperado.
-  - **No PC de casa (AMD Radeon, monitor 1600×900), conferido à mão em 2026-10-19** (sem iPhone): 97 testes do PC verdes; sondagem `amf-d3d11` **falha limpo** (código ≠ 0, "Error submitting video frame") e o app passa para **`amf-download`**, que funciona (linha completa: 58 fps, código 0). Medido o I3: o AMF manda SPS/PPS só na 1ª IDR. `.ipa` build 33 do `1b7f5f4` baixado e inspecionado em `builds/5a-1b7f5f4`, `TelaDois.exe` da 5a em `builds/windows-5a` (não instalados: o usuário preferiu seguir para a 5b).
-  - **O teste da 5a no iPhone pelo PC AMD foi juntado ao teste final da 5b** (Task 10, Step 3 do plano da 5b: desativa o driver e testa Duplicar). A 5a não será juntada ao `main` sozinha: vai junto com a 5b.
-  - Revisão final do branch (`.superpowers/sdd/`, só neste PC; resumo aqui): sem críticos; 3 importantes que o usuário **adiou para a 5b** ("testar já"): **I1** o PC manda `CONFIG` antes da 1ª imagem (captura que falha depois da sondagem deixa o iPhone preto para sempre) → mandar `CONFIG` junto com a 1ª imagem; **I2** `VideoRenderer.reset()` usa `flush()` e a imagem velha da sessão anterior aparece ao reconectar → `flush(removingDisplayedImage: true)`; **I3** o PC não garante SPS/PPS antes de todo IDR (QSV, MF e x264 repetem — medido; AMF não verificado) → `AccessUnitReader` guarda o último SPS/PPS e reinsere. Menores: sondagem sem as opções da linha real, brilho 0 até 1 s ao entrar na Segunda Tela, animação implícita da camada, asserção vazia do `dim-overlay` no teste de UI, registro nunca girado, filtro do `windows-test` sem a fixture do pacote.
-- **Etapa 5b — Monitor estendido (3º monitor) + atalho**, branch **`etapa-5b-monitor-virtual`** (saiu do `etapa-5a-video` em `ca8daac`; contém toda a 5a). **Spec e plano aprovados pelo usuário em 2026-10-19; nenhuma tarefa executada ainda.**
-  - Spec: `docs/superpowers/specs/2026-10-19-etapa-5b-monitor-virtual-design.md` (`9365c4d`). Plano: `docs/superpowers/plans/2026-10-19-etapa-5b-monitor-virtual.md` (`c4a4884`), 10 tarefas com código completo: 1 instalador do driver + instalação pelo usuário; 2 `VirtualDisplay` (+ teste local que valida no driver real: nome do adaptador, ligar gravando no registro — sem gravar o driver recusa com -1, medido em 2026-10-20 —, monitor visível na DXGI); 3 `VIDEO_END` nos dois lados; 4 iPhone volta ao relógio + I2 (print `07-fim-do-video`, versão 0.4.0); 5 I3; 6 `MonitorMode`; 7 `LinkSession` liga/desliga + I1; 8 `VideoFeedFactory` Estender/Duplicar; 9 bandeja + atalho; 10 teste no iPhone (inclui a 5a no AMD), docs, pergunta sobre o `main`.
-  - Comportamento: ao plugar com o app aberto liga sozinho (monitor extra em Estender, resolução do `HELLO`, à direita do monitor mais à direita); **Win+Shift+]** e "Modo monitor" na bandeja ligam/desligam (desligado = iPhone no relógio com "PC conectado"); tirar o cabo, fechar o app ou sair do TelaDois tira o monitor; sem driver, duplica como na 5a. Escala (DPI) fica com o Windows (sem API pública).
-  - **Próximo passo:** o usuário escolhe como executar (subagentes, recomendado, ou nesta sessão em lotes). A Task 1 começa **pedindo autorização** para baixar `VirtualDisplayDriver-x86.Driver.Only.zip` (132 KB) e depois o usuário roda `tools\vdd\instalar-vdd.ps1` como administrador.
-  - Riscos a validar na Task 2: monitor IddCx em outro adaptador DXGI (o `DisplayCatalog` e o `ddagrab` só olham o adaptador 0); `ChangeDisplaySettingsEx` sem `CDS_UPDATEREGISTRY` com monitor IddCx; Controle de Aplicativos do PC do trabalho pode bloquear o driver; o pipe aceita qualquer usuário do PC (Etapa 6).
-- **Branch `etapa-5-segunda-tela` (`0664172`) — abandonado, guardado como referência.** Foi uma versão paralela da Segunda Tela feita no PC de casa sem saber da 5a (monitor virtual + FFmpeg, nunca testada no iPhone). Decisão do usuário em 2026-10-19: seguir a 5a/5b. O `DisplayManager` dele é a base do `Win32DisplayApi` da 5b. Não juntar.
+**Em andamento — Etapa 5c** (mesmo branch `etapa-5b-monitor-virtual`): spec `docs/superpowers/specs/2026-10-20-etapa-5c-monitor-some-e-tela-preta-design.md`, plano `docs/superpowers/plans/2026-10-20-etapa-5c-monitor-some-e-tela-preta.md` (9 tarefas), executando com subagentes.
+- (A) O 3º monitor some do Windows quando desligado: o dispositivo `Root\MttVDD` fica **desativado** e o TelaDois o ativa só enquanto estende, pelas tarefas agendadas `\TelaDois\Ligar monitor virtual` / `\TelaDois\Desligar monitor virtual` (criadas pelo instalador, rodam como SYSTEM, liberadas para o grupo Usuários). Medido no PC do trabalho: ligar ~0,9 s até o monitor aparecer, desligar ~0,7 s; depois de ativar o Windows não põe o monitor no desktop sozinho.
+- (B) Tela preta no iPhone: Win+Shift+[ (e item "Tela preta no iPhone" na bandeja) manda `SCREEN` (tipo 10) e o iPhone fica preto com brilho mínimo, monitor continuando no Windows; 1 toque acende e avisa o PC.
+- **Feito:** Task 1 (instalador com as tarefas; o usuário já rodou no PC do trabalho, ok), Task 2 (`IDeviceSwitch`/`ScheduledTaskSwitch`, `VirtualDisplay.PowerOnAsync/PowerOffAsync`), Task 5 (`SCREEN` nos dois protocolos, bytes `0A0000000101`/`0A0000000100`). Último commit revisado: `68134eb`.
+- **Task 3 implementada** (`084f426`: a fábrica liga o dispositivo antes de estender e desliga depois; teste local de Attach liga o dispositivo antes) — **falta a revisão dela** (e rodar o teste local com `TELADOIS_LOCAL_DRIVER_TEST=1`).
+- **Faltam:** Task 4 (bandeja desativa ao abrir/sair + balão sem tarefas); Task 6 (iPhone: capa preta, toque, print `08-tela-preta`, versão 0.5.0); Task 7 (`MonitorMode` com tela preta + `SCREEN` na `LinkSession`); Task 8 (atalho Win+Shift+[ e item da bandeja); revisão final do branch; Task 9 (teste no iPhone + docs + perguntar sobre o `main`).
+- O controle das tarefas dos subagentes fica em `.superpowers/sdd/progress.md` (só neste PC); o resumo é este bloco.
+
+**Depois da 5c — Etapa 5d (atraso, fluidez e sincronia som/imagem)**, decisão do usuário: experimentos medidos e especificação própria. Queixas no iPhone (2026-10-20): atraso ao começar a mexer o mouse parado, rolagem ainda engasga um pouco, **podcast com o som saindo antes da boca** no iPhone. Hipóteses a medir: latência do `ddagrab` + QSV (`-low_power`, `async_depth`), quedas de fps da captura (20–49/s às vezes), exibição no iPhone (`AVSampleBufferDisplayLayer`). Opções para a sincronia: baixar o atraso abaixo de ~80 ms, ou mandar o som do PC para o iPhone tocar junto com a imagem. Wi-Fi descartado (mais atraso e oscilação; o cabo tem folga).
 
 **Pendências que o usuário decidiu deixar para depois**
 - Etapa 3 (Spotify): adiada em 2026-10-18 para chegar antes na Segunda Tela.
-- Clima: tentar de novo em ~1 min após falha, tempo-limite na primeira localização e checar permissão antes (hoje pode ficar 30 min sem temperatura).
+- Clima: tentar de novo em ~1 min após falha, tempo-limite na primeira localização e checar permissão antes.
 - O teste "relógio ocupa > 50% da altura" mede a caixa do texto, não os dígitos; revisão de prints é a garantia real.
+- Teste da 5a/5b no PC de casa (AMD): entra no teste final (Task 9 da 5c); lá o perfil esperado é `amf-download` (agora cortando a altura para par).
 
 **Bloqueio**
-- Nenhum. O cabo de dados chegou; o PC tem iTunes 12.13 64-bit (versão web), iCloud web, Apple Mobile Device Support 20 e Sideloadly.
-- PC `C:\Pedro\Arquivos Pedro\Aplicativo celular` (trabalho, Intel UHD; conferido em 2026-10-19): **ambiente completo.** graphify, uv, .NET 10 SDK (10.0.402), FFmpeg 9.0.2 (`Gyan.FFmpeg`), WSL + Ubuntu (usuário `pedro`, rede espelhada) e xtool 1.22.2 com `xtool auth login` feito (token até 19/10/2027). `xtool devices` mostra o iPhone pelo cabo. Neste PC os caminhos do repositório no Ubuntu são `/mnt/c/Pedro/Arquivos Pedro/Aplicativo celular/...` (o comando de instalar do outro PC usa `/mnt/d/Downloads/Teladois/...`).
-- **Certificado:** em 2026-10-19 a instalação pelo PC do trabalho revogou o certificado criado no PC de casa. Na próxima instalação pelo PC de casa o xtool vai pedir para revogar de novo (o usuário responde `yes` numa aba do Terminal). O iPhone já está com o build 33 da 5a (instalado pelo PC do trabalho).
-- PC `D:\Downloads\Teladois` (casa, AMD Radeon, monitor 1600×900; conferido em 2026-10-19): ambiente completo para a 5b, **falta só o Virtual Display Driver** (Task 1 do plano).
+- Nenhum.
+- **Certificado:** a última instalação no iPhone foi pelo PC do trabalho (build 40, 0.4.1, do `308d1fd`). Instalar pelo PC de casa vai pedir para revogar o certificado (o usuário responde `yes` numa aba do Terminal).
 
 **Próximos passos**
-1. Etapa 5b — executar o plano `docs/superpowers/plans/2026-10-19-etapa-5b-monitor-virtual.md` a partir da Task 1, no branch `etapa-5b-monitor-virtual`. As Tasks 3–9 não dependem do driver (usam falsos) e podem andar enquanto o driver não é instalado; as Tasks 2 (passo local) e 10 precisam dele.
-2. Com os 3 workflows verdes no SHA final e o teste no iPhone feito, perguntar ao usuário se junta `etapa-5b-monitor-virtual` (com a 5a) ao `main`.
-3. Etapa 3 — Spotify (página de música, mini player).
-4. Etapa 6 — acabamento (inclui a revisão de segurança do pipe do driver, que aceita qualquer usuário do PC: `D:(A;;GA;;;WD)`).
+1. Terminar a Etapa 5c pelo plano (a partir da revisão da Task 3), com subagentes.
+2. Com os 3 workflows verdes no SHA final e o teste no iPhone feito, **perguntar ao usuário** se junta `etapa-5b-monitor-virtual` (5a + 5b + 5c) ao `main`.
+3. Etapa 5d — atraso/fluidez/sincronia (experimentos medidos → spec → plano).
+4. Etapa 3 — Spotify. 5. Etapa 6 — acabamento (inclui a revisão de segurança do pipe do driver e das tarefas `\TelaDois\`, que qualquer usuário do PC pode disparar).
 
 Há um projeto Android parecido em outra pasta (`C:\Pedro\Arquivos Pedro\Aplicativo Android`), com sessão e repositório próprios.
 
@@ -172,7 +175,7 @@ PC de casa conferido em 2026-10-19 (`Get-Command`, `dotnet --version`, `uv --ver
 | FFmpeg 9.0.2 (Gyan) | ✅ | ✅ |
 | WSL Ubuntu + xtool 1.22.2 logado + `USBMUXD_SOCKET_ADDRESS` | ✅ | ✅ |
 | iTunes/iCloud web + Apple Mobile Device Support 20 | ✅ | ✅ |
-| **Virtual Display Driver 25.7.23** (Etapa 5b) | ❌ instalar (Task 1 do plano da 5b) | ❌ instalar (pode ser bloqueado pelo Controle de Aplicativos) |
+| **Virtual Display Driver 25.7.23** + tarefas `\TelaDois\` (Etapas 5b/5c) | ❌ rodar `toolsdd\instalar-vdd.ps1` como administrador | ✅ instalado e com as tarefas (2026-10-20; o Controle de Aplicativos não bloqueou) |
 | Plugins `agent-skills`, `frontend-design` | ✅ | ✅ |
 | Plugins `hyperframes`, `supabase` | ❌ (opcionais, não usados aqui) | ✅ |
 | Skill pessoal `graphify` | ✅ | ✅ |
@@ -216,7 +219,7 @@ Para tê-los também no CLI puro (os marketplaces já estão registrados neste P
 | Origem | Skills usadas neste projeto |
 |---|---|
 | Plugins | superpowers (`brainstorming`, `writing-plans`, `subagent-driven-development`, `test-driven-development`, `systematic-debugging`, `verification-before-completion`, `requesting-code-review`), agent-skills (`spec`, `plan`, `ci-cd-and-automation`, `api-and-interface-design`, `performance-optimization`, `security-and-hardening`…), ui-ux-pro-max, frontend-design, hyperframes (vídeo demo, opcional) |
-| Pessoais (`~/.claude/skills`) | `reverse-engineer-anything` (usa o MCP `rea`), `graphify` (instalada pelo `graphify install`, ver abaixo) |
+| Pessoais (`~/.claude/skills`) | `reverse-engineer-anything` (usa o MCP `rea`), `graphify` (instalada pelo `graphify install`, ver abaixo), `apple-hig-designer` (nova em 2026-10-20 no PC do trabalho; desenho no estilo Apple — copiar a pasta para o outro PC se for usar) |
 | Projeto (`.claude/skills`) | `encerrar` — comando **`/encerrar`**: rotina de fim de sessão (atualiza este CLAUDE.md, verifica o ambiente de verdade, confere segredos, commit e push, lista o que falta no outro PC). Vai pelo Git, então funciona nos dois PCs |
 
 - **`reverse-engineer-anything`**: não vale mover para o projeto — é genérica e depende do REA instalado globalmente (`npm install -g rea-agents`); copie a pasta `~/.claude/skills/reverse-engineer-anything` para o outro PC.
