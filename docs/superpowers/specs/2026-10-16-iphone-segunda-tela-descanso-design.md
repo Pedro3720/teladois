@@ -159,7 +159,7 @@ Cada etapa termina em algo funcionando e verificado.
 | 2 | Descanso v1 | Relógio, data, bateria, clima, escurecer em 60 s e acender com 1 toque — testado no CI e no iPhone — concluída no CI em 2026-10-18; instalada e aberta no iPhone em 2026-10-18 (build do `9cce6d6`) |
 | 3 | Spotify | Página Música com capa, progresso e controles |
 | 4 | Túnel USB | App do PC detecta o iPhone e troca `HELLO`/`PING` pelo cabo — concluída em 2026-10-18; testada no iPhone pelo cabo (latência de poucos ms, reconexão automática) |
-| 5 | Segunda Tela | Monitor virtual + transmissão + desconexão automática — **5a** (duplicar um monitor existente pelo cabo) testada no iPhone em 2026-10-19 no PC Intel (`qsv-hwmap`), falta o PC AMD; **5b** (monitor virtual estendido + atalho Win+Shift+]) em desenho |
+| 5 | Segunda Tela | Monitor virtual + transmissão + desconexão automática — **5a** (duplicar um monitor existente pelo cabo) testada no iPhone em 2026-10-19 no PC Intel (`qsv-hwmap`); no PC AMD a compressão `amf-download` foi conferida à mão e o teste no iPhone entra no teste final da 5b; **5b** (monitor virtual estendido + atalho Win+Shift+]) com spec e plano aprovados em 2026-10-19 (branch `etapa-5b-monitor-virtual`), execução não começou |
 | 6 | Acabamento | Latência ajustada, ícone de bandeja completo, iniciar com o Windows, revisão de segurança |
 
 ## 9. Ferramentas do Claude por etapa

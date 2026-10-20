@@ -47,6 +47,9 @@ node_modules/
 # Build local do pacote Swift (se alguém rodar swift no Mac)
 ios/Packages/*/.build/
 
+# Logs soltos (ex.: sideloadlydaemon.log que o Sideloadly cria na pasta de onde é aberto)
+*.log
+
 # SO / editores
 .DS_Store
 Thumbs.db
