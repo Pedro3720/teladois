@@ -19,14 +19,17 @@ public sealed class FfmpegCapture : IVideoFeed
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _pump;
     private readonly Action? _endedWithoutFrames;
+    private readonly Action<string> _log;
     private int _produced;
     private int _reported;
 
     /// <param name="maxQueueAge">Idade máxima de uma imagem esperando o cabo (padrão 100 ms, ver <see cref="FrameQueue"/>).</param>
     /// <param name="endedWithoutFrames">
     /// Chamado no máximo uma vez, quando a linha de captura falha sem nunca ter produzido uma imagem: o FFmpeg termina
-    /// (ou não inicia) sozinho, ou a sessão avisa por <see cref="FirstFrameMissed"/> que o prazo da 1ª imagem estourou.
-    /// Descartar (o usuário desligou, tirou o cabo ou saiu) não chama: isso não diz nada sobre a compressão.
+    /// (ou não inicia) sozinho <b>2 vezes seguidas</b> (a 1ª falha logo depois de ligar o monitor, ex.: ddagrab
+    /// <c>887a0026</c>, é comum e passa), ou a sessão avisa por <see cref="FirstFrameMissed"/> que o prazo da 1ª imagem
+    /// estourou. Descartar (o usuário desligou, tirou o cabo ou saiu) não chama: isso não diz nada sobre a compressão.
+    /// Se ele lançar, a falha só vai para o log.
     /// </param>
     public FfmpegCapture(IProcessRunner runner, string ffmpegPath, IReadOnlyList<string> arguments, VideoConfig config, Action<string> log, IReadOnlyList<TimeSpan>? backoff = null, TimeSpan? maxQueueAge = null, Action? endedWithoutFrames = null)
     {
@@ -36,6 +39,7 @@ public sealed class FfmpegCapture : IVideoFeed
             throw new ArgumentException("É preciso ao menos uma espera de reinício.", nameof(backoff));
         }
         _endedWithoutFrames = endedWithoutFrames;
+        _log = log;
         Config = config;
         _queue = new FrameQueue(maxQueueAge);
         _queue.DropStarted += () => log($"cabo atrasado: descartando até a próxima imagem completa ({_queue.Dropped} descartadas até agora)");
@@ -61,6 +65,7 @@ public sealed class FfmpegCapture : IVideoFeed
     private async Task PumpAsync(IProcessRunner runner, string ffmpegPath, IReadOnlyList<string> arguments, Action<string> log, IReadOnlyList<TimeSpan> waits, CancellationToken ct)
     {
         var attempt = 0;
+        var runsWithoutFrames = 0;
         while (!ct.IsCancellationRequested)
         {
             try
@@ -68,6 +73,11 @@ public sealed class FfmpegCapture : IVideoFeed
                 if (await RunOnceAsync(runner, ffmpegPath, arguments, log, ct))
                 {
                     attempt = 0;
+                    runsWithoutFrames = 0;
+                }
+                else
+                {
+                    runsWithoutFrames++;
                 }
             }
             catch (Exception) when (ct.IsCancellationRequested)
@@ -77,12 +87,16 @@ public sealed class FfmpegCapture : IVideoFeed
             catch (Exception e)
             {
                 log($"FFmpeg falhou: {e.Message}");
+                runsWithoutFrames++;
             }
             if (ct.IsCancellationRequested)
             {
                 return;
             }
-            ReportNoFrames();
+            if (runsWithoutFrames >= 2)
+            {
+                ReportNoFrames();
+            }
             var wait = waits[Math.Min(attempt, waits.Count - 1)];
             attempt++;
             log($"FFmpeg: nova tentativa em {wait.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture)} ms");
@@ -162,11 +176,19 @@ public sealed class FfmpegCapture : IVideoFeed
     /// <summary>O prazo da 1ª imagem estourou: se o FFmpeg ainda não entregou nenhuma, avisa (uma vez) que a compressão falhou.</summary>
     public void FirstFrameMissed() => ReportNoFrames();
 
+    /// <summary>Nunca lança: chamado do pump (que não pode cair) e da sessão.</summary>
     private void ReportNoFrames()
     {
         if (Volatile.Read(ref _produced) == 0 && Interlocked.Exchange(ref _reported, 1) == 0)
         {
-            _endedWithoutFrames?.Invoke();
+            try
+            {
+                _endedWithoutFrames?.Invoke();
+            }
+            catch (Exception e)
+            {
+                _log($"aviso de captura sem imagem falhou: {e.Message}");
+            }
         }
     }
 

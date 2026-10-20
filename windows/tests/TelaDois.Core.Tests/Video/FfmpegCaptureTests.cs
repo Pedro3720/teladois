@@ -81,6 +81,61 @@ public class FfmpegCaptureTests
         Assert.Equal(1, reports);
     }
 
+    /// <summary>
+    /// A 1ª execução sem imagem é comum logo depois de ligar o monitor (ddagrab 887a0026) e passa: não faz esquecer a
+    /// compressão. A 2ª seguida, sim (o prazo da 1ª imagem da sessão cobre o caso que trava sem terminar).
+    /// </summary>
+    [Fact]
+    public async Task OnlyTheSecondRunInARowWithoutPicturesIsReported()
+    {
+        var reports = 0;
+        var secondReading = new BlockingStream();
+        var starts = 0;
+        var runner = new FakeProcessRunner(_ => Interlocked.Increment(ref starts) == 1
+            ? new FakeProcess(1, errors: "887a0026")
+            : new FakeProcess(0, hangs: true, stream: secondReading));
+        var capture = new FfmpegCapture(runner, "ffmpeg", ["-x"], Config, _ => { }, FastBackoff, endedWithoutFrames: () => Interlocked.Increment(ref reports));
+        // A 2ª execução só começa depois de a 1ª ter sido tratada (e, se fosse, avisada).
+        await secondReading.ReadStarted.Task.WaitAsync(Generous);
+        Assert.Equal(0, reports);
+        await capture.DisposeAsync();
+
+        var thirdReading = new BlockingStream();
+        starts = 0;
+        runner = new FakeProcessRunner(_ => Interlocked.Increment(ref starts) <= 2
+            ? new FakeProcess(1, errors: "falhou")
+            : new FakeProcess(0, hangs: true, stream: thirdReading));
+        capture = new FfmpegCapture(runner, "ffmpeg", ["-x"], Config, _ => { }, FastBackoff, endedWithoutFrames: () => Interlocked.Increment(ref reports));
+        await thirdReading.ReadStarted.Task.WaitAsync(Generous);
+        Assert.Equal(1, reports);
+        await capture.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ACallbackThatThrowsNeitherStopsThePumpNorEscapes()
+    {
+        var log = new List<string>();
+        var reading = new BlockingStream();
+        var starts = 0;
+        var runner = new FakeProcessRunner(_ => Interlocked.Increment(ref starts) <= 2
+            ? new FakeProcess(1, errors: "falhou")
+            : new FakeProcess(0, hangs: true, stream: reading));
+        var capture = new FfmpegCapture(runner, "ffmpeg", ["-x"], Config, Collect(log), FastBackoff,
+            endedWithoutFrames: () => throw new InvalidOperationException("o aviso quebrou"));
+        await reading.ReadStarted.Task.WaitAsync(Generous); // a 3ª execução começou: o pump seguiu
+        capture.FirstFrameMissed(); // já avisou uma vez: não chama de novo, não lança
+        await capture.DisposeAsync().AsTask().WaitAsync(Generous);
+        Assert.Contains(Snapshot(log), line => line.Contains("o aviso quebrou", StringComparison.Ordinal));
+
+        var stdout = new BlockingStream();
+        var hanging = new FfmpegCapture(new FakeProcessRunner(_ => new FakeProcess(0, hangs: true, stream: stdout)), "ffmpeg", ["-x"], Config, Collect(log), NoRestart,
+            endedWithoutFrames: () => throw new InvalidOperationException("de novo"));
+        await stdout.ReadStarted.Task.WaitAsync(Generous);
+        hanging.FirstFrameMissed(); // não lança
+        await hanging.DisposeAsync();
+        Assert.Contains(Snapshot(log), line => line.Contains("de novo", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task FirstFrameMissedReportsOnceWhileNoPictureCameAndNeverAfterOne()
     {
