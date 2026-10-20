@@ -59,7 +59,10 @@ public class FileLogTests
         var folder = Directory.CreateTempSubdirectory("teladois-log-");
         try
         {
-            new FileLog(folder.FullName).Write("perdida"); // UnauthorizedAccessException
+            // O File.AppendAllText numa pasta dá UnauthorizedAccessException: a linha é descartada, nada lança.
+            Assert.Null(Record.Exception(() => new FileLog(folder.FullName).Write("perdida")));
+            Assert.True(Directory.Exists(folder.FullName));
+            Assert.Empty(folder.EnumerateFileSystemInfos());
         }
         finally
         {
