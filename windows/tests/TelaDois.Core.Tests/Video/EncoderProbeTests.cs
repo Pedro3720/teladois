@@ -22,6 +22,34 @@ public class EncoderProbeTests
     }
 
     [Fact]
+    public async Task ForgetMakesTheNextChoiceProbeAgain()
+    {
+        var runner = new FakeProcessRunner(args => new FakeProcess(args.Contains("h264_qsv") ? 0 : 1));
+        var probe = new EncoderProbe(runner, "ffmpeg", _ => { });
+
+        var chosen = await probe.ChooseAsync(1, CancellationToken.None);
+        Assert.False(probe.Forget(EncoderProfiles.Candidates[^1])); // outro perfil: o guardado fica
+        Assert.Equal(chosen, await probe.ChooseAsync(1, CancellationToken.None));
+        Assert.Equal(3, runner.Started.Count);
+
+        Assert.True(probe.Forget(chosen));
+        Assert.Equal(chosen, await probe.ChooseAsync(2, CancellationToken.None));
+        Assert.Equal(6, runner.Started.Count);
+    }
+
+    [Fact]
+    public async Task ConcurrentChoicesProbeOnlyOnce()
+    {
+        var runner = new FakeProcessRunner(args => new FakeProcess(args.Contains("h264_qsv") ? 0 : 1));
+        var probe = new EncoderProbe(runner, "ffmpeg", _ => { });
+
+        var chosen = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Task.Run(() => probe.ChooseAsync(1, CancellationToken.None))));
+
+        Assert.All(chosen, c => Assert.Equal("h264_qsv", c.Codec));
+        Assert.Equal(3, runner.Started.Count);
+    }
+
+    [Fact]
     public async Task FallsBackToSoftware()
     {
         var runner = new FakeProcessRunner(args => new FakeProcess(args.Contains("libx264") ? 0 : 1));

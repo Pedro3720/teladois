@@ -77,9 +77,23 @@ public sealed class VideoFeedFactory(
         }
         var profile = await _probe.ChooseAsync(output.OutputIndex, ct);
         log($"duplicando {output.DeviceName} ({output.Width}×{output.Height}) com {profile.Id} para o iPhone {hello.Width}×{hello.Height}");
-        return new FfmpegCapture(runner, ffmpegPath, FfmpegArguments.ForMonitor(profile, output.OutputIndex, Fps),
-            new VideoConfig((uint)output.Width, (uint)output.Height, Fps), log);
+        return Capture(_probe, ffmpegPath, profile, output);
     }
+
+    /// <summary>
+    /// A captura de <paramref name="output"/>. Se ela terminar sem nenhuma imagem (a sondagem passou, mas a linha real
+    /// falha nesta saída), o perfil guardado é esquecido: a próxima abertura sonda de novo.
+    /// </summary>
+    private FfmpegCapture Capture(EncoderProbe probe, string ffmpeg, EncoderProfile profile, DisplayOutput output) =>
+        new(runner, ffmpeg, FfmpegArguments.ForMonitor(profile, output.OutputIndex, Fps),
+            new VideoConfig((uint)output.Width, (uint)output.Height, Fps), log,
+            endedWithoutFrames: () =>
+            {
+                if (probe.Forget(profile))
+                {
+                    log($"a captura com {profile.Id} terminou sem nenhuma imagem: a próxima conexão testa as compressões de novo");
+                }
+            });
 
     /// <summary>Liga o monitor virtual e captura ele; <c>null</c> para cair em Duplicar (motivo no log).</summary>
     private async Task<IVideoFeed?> TryExtendAsync(IVirtualMonitor monitor, EncoderProbe probe, string ffmpeg, HelloInfo hello, CancellationToken ct)
@@ -110,9 +124,7 @@ public sealed class VideoFeedFactory(
             }
             var profile = await probe.ChooseAsync(output.OutputIndex, ct);
             log($"estendendo para o iPhone: {device} ({output.Width}×{output.Height}) com {profile.Id}");
-            var capture = new FfmpegCapture(runner, ffmpeg, FfmpegArguments.ForMonitor(profile, output.OutputIndex, Fps),
-                new VideoConfig((uint)output.Width, (uint)output.Height, Fps), log);
-            return new VirtualMonitorFeed(capture, monitor, device, log);
+            return new VirtualMonitorFeed(Capture(probe, ffmpeg, profile, output), monitor, device, log);
         }
         catch
         {

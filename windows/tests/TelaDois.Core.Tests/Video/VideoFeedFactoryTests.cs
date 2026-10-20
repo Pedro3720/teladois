@@ -161,6 +161,54 @@ public class VideoFeedFactoryTests
         Assert.Equal(new[] { monitor.Device }, monitor.Detached);
     }
 
+    /// <summary>Sondagens iniciadas até agora (a captura pode estar iniciando o FFmpeg ao mesmo tempo: lê sob a trava).</summary>
+    private static int ProbeCount(FakeProcessRunner runner)
+    {
+        lock (runner.Started)
+        {
+            return runner.Started.Count(a => a.Contains("-frames:v"));
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CaptureThatNeverDeliversAFrameMakesTheNextOpenProbeAgain(bool extend)
+    {
+        // Sondagem: só o h264_mf funciona; captura: o FFmpeg sai sem imagem (a linha real falha nesta saída).
+        var runner = new FakeProcessRunner(args => args.Contains("-frames:v") ? new FakeProcess(args.Contains("h264_mf") ? 0 : 1) : new FakeProcess(1));
+        var monitor = new FakeVirtualMonitor { Installed = extend };
+        var log = new ConcurrentQueue<string>();
+        var factory = new VideoFeedFactory("ffmpeg", runner, () => monitor.Attached ? new[] { Main, Virtual } : new[] { Main, Side }, () => null, log.Enqueue, monitor);
+        int Probes() => ProbeCount(runner);
+
+        var first = await factory.OpenAsync(Hello, CancellationToken.None);
+        Assert.Equal(extend ? VideoKind.Extend : VideoKind.Mirror, first!.Kind);
+        var probesBefore = Probes();
+        await first.DisposeAsync();
+        Assert.Contains("a captura com mf terminou sem nenhuma imagem: a próxima conexão testa as compressões de novo", log);
+
+        await using var second = await factory.OpenAsync(Hello, CancellationToken.None);
+        Assert.NotNull(second);
+        Assert.Equal(2 * probesBefore, Probes());
+    }
+
+    [Fact]
+    public async Task CaptureThatDeliversKeepsTheProfile()
+    {
+        var runner = WorkingRunner();
+        var factory = new VideoFeedFactory("ffmpeg", runner, () => [Main, Side], () => null, _ => { });
+        int Probes() => ProbeCount(runner);
+
+        var first = await factory.OpenAsync(Hello, CancellationToken.None);
+        await first!.NextAsync(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
+        var probesBefore = Probes();
+        await first.DisposeAsync();
+
+        await using var second = await factory.OpenAsync(Hello, CancellationToken.None);
+        Assert.Equal(probesBefore, Probes());
+    }
+
     [Fact]
     public async Task LogsWhenTheMonitorStaysAfterAFailedOpen()
     {

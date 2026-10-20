@@ -18,15 +18,20 @@ public sealed class FfmpegCapture : IVideoFeed
     // NextAsync/DisposeAsync chamados depois do DisposeAsync (cancelado, em vez de ObjectDisposedException).
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _pump;
+    private readonly Action? _endedWithoutFrames;
+    private int _produced;
+    private int _disposed;
 
     /// <param name="maxQueueAge">Idade máxima de uma imagem esperando o cabo (padrão 100 ms, ver <see cref="FrameQueue"/>).</param>
-    public FfmpegCapture(IProcessRunner runner, string ffmpegPath, IReadOnlyList<string> arguments, VideoConfig config, Action<string> log, IReadOnlyList<TimeSpan>? backoff = null, TimeSpan? maxQueueAge = null)
+    /// <param name="endedWithoutFrames">Chamado uma vez no descarte se o FFmpeg não produziu nenhuma imagem.</param>
+    public FfmpegCapture(IProcessRunner runner, string ffmpegPath, IReadOnlyList<string> arguments, VideoConfig config, Action<string> log, IReadOnlyList<TimeSpan>? backoff = null, TimeSpan? maxQueueAge = null, Action? endedWithoutFrames = null)
     {
         var waits = backoff ?? DefaultBackoff;
         if (waits.Count == 0)
         {
             throw new ArgumentException("É preciso ao menos uma espera de reinício.", nameof(backoff));
         }
+        _endedWithoutFrames = endedWithoutFrames;
         Config = config;
         _queue = new FrameQueue(maxQueueAge);
         _queue.DropStarted += () => log($"cabo atrasado: descartando até a próxima imagem completa ({_queue.Dropped} descartadas até agora)");
@@ -112,6 +117,7 @@ public sealed class FfmpegCapture : IVideoFeed
                     await foreach (var unit in new AccessUnitReader(process.Output).ReadAllAsync(ct))
                     {
                         sawFrames = true;
+                        Volatile.Write(ref _produced, 1);
                         _queue.Add(unit);
                     }
                 }
@@ -153,5 +159,9 @@ public sealed class FfmpegCapture : IVideoFeed
     {
         await _cts.CancelAsync();
         await _pump;
+        if (Interlocked.Exchange(ref _disposed, 1) == 0 && Volatile.Read(ref _produced) == 0)
+        {
+            _endedWithoutFrames?.Invoke();
+        }
     }
 }
