@@ -80,10 +80,23 @@ public static unsafe class DisplayCatalog
         return outputs;
     }
 
-    public static DisplayOutput? Choose(IReadOnlyList<DisplayOutput> outputs, string? preferredDeviceName) =>
-        outputs.FirstOrDefault(o => o.DeviceName == preferredDeviceName)
-        ?? outputs.FirstOrDefault(o => !o.IsPrimary)
-        ?? outputs.FirstOrDefault();
+    /// <summary>
+    /// O monitor salvo, senão o primeiro não principal, senão o primeiro. Nunca <paramref name="excludedDeviceName"/>
+    /// (o monitor virtual: duplicá-lo seria transmitir o próprio iPhone).
+    /// </summary>
+    public static DisplayOutput? Choose(IReadOnlyList<DisplayOutput> outputs, string? preferredDeviceName, string? excludedDeviceName = null)
+    {
+        var allowed = Without(outputs, excludedDeviceName);
+        return allowed.FirstOrDefault(o => o.DeviceName == preferredDeviceName)
+            ?? allowed.FirstOrDefault(o => !o.IsPrimary)
+            ?? allowed.FirstOrDefault();
+    }
+
+    /// <summary><paramref name="outputs"/> sem o monitor de nome <paramref name="excludedDeviceName"/> (sem diferenciar maiúsculas).</summary>
+    public static IReadOnlyList<DisplayOutput> Without(IReadOnlyList<DisplayOutput> outputs, string? excludedDeviceName) =>
+        excludedDeviceName is null
+            ? outputs
+            : outputs.Where(o => !string.Equals(o.DeviceName, excludedDeviceName, StringComparison.OrdinalIgnoreCase)).ToList();
 
     private static int Enum(IntPtr obj, uint index, out IntPtr result)
     {

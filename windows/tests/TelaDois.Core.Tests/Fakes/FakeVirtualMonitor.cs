@@ -29,6 +29,8 @@ internal sealed class FakeVirtualMonitor : IVirtualMonitor
 
     public Task<bool> IsInstalledAsync(CancellationToken ct) => Task.FromResult(Installed);
 
+    public string? Find() => Device;
+
     public (string DeviceName, DisplayModeInfo Mode) Attach(int width, int height)
     {
         if (AttachError is not null)

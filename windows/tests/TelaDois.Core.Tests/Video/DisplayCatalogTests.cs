@@ -22,6 +22,19 @@ public class DisplayCatalogTests
     [Fact]
     public void NoMonitorsGivesNull() => Assert.Null(DisplayCatalog.Choose([], null));
 
+    private static readonly DisplayOutput Virtual = new(2, @"\\.\DISPLAY3", 2556, 1179, false);
+
+    [Fact]
+    public void NeverChoosesTheExcludedVirtualMonitor() =>
+        Assert.Equal(Side, DisplayCatalog.Choose([Main, Virtual, Side], null, @"\\.\DISPLAY3"));
+
+    [Fact]
+    public void ExcludedMonitorLosesEvenWhenSavedAndIgnoresCase() =>
+        Assert.Equal(Side, DisplayCatalog.Choose([Main, Virtual, Side], @"\\.\DISPLAY3", @"\\.\display3"));
+
+    [Fact]
+    public void OnlyTheExcludedMonitorGivesNull() => Assert.Null(DisplayCatalog.Choose([Virtual], null, Virtual.DeviceName));
+
     [Fact]
     public void EnumerateDoesNotThrowAndReportsSaneMonitors()
     {

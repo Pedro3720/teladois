@@ -137,6 +137,19 @@ public class VideoFeedFactoryTests
     }
 
     [Fact]
+    public async Task MirrorNeverPicksTheVirtualMonitorThatIsStillOn()
+    {
+        // O driver não respondeu ao PING, mas o monitor dele continua no desktop (ex.: o Detach anterior falhou).
+        var monitor = new FakeVirtualMonitor { Installed = false, Attached = true };
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [Main, Virtual, Side], () => null, _ => { }, monitor);
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Mirror, feed!.Kind);
+        Assert.Equal(new VideoConfig(1366, 768, 60), feed.Config);
+    }
+
+    [Fact]
     public async Task AttachThatDoesNotReachTheDesktopSaysSoAndMirrors()
     {
         var monitor = new FakeVirtualMonitor { AttachTakes = false };

@@ -69,7 +69,8 @@ public sealed class VideoFeedFactory(
                 DriverMissing?.Invoke();
             }
         }
-        var output = DisplayCatalog.Choose(displays(), preferredMonitor());
+        // Duplicar nunca escolhe o monitor virtual (pode ter ficado ligado se o Detach falhou).
+        var output = DisplayCatalog.Choose(displays(), preferredMonitor(), virtualMonitor?.Find());
         if (output is null)
         {
             log("nenhum monitor para transmitir");

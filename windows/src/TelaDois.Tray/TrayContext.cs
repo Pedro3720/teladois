@@ -188,7 +188,18 @@ internal sealed class TrayContext : ApplicationContext
     private void FillMonitors(ToolStripMenuItem menu)
     {
         menu.DropDownItems.Clear();
-        var outputs = DisplayCatalog.Enumerate();
+        // O monitor virtual (estendido agora) não entra na lista: duplicá-lo seria transmitir o próprio iPhone.
+        string? virtualMonitor;
+        try
+        {
+            virtualMonitor = _virtualDisplay.Find();
+        }
+        catch (Exception e)
+        {
+            _log.Write($"não deu para procurar o monitor virtual: {e.Message}");
+            virtualMonitor = null;
+        }
+        var outputs = DisplayCatalog.Without(DisplayCatalog.Enumerate(), virtualMonitor);
         var current = DisplayCatalog.Choose(outputs, _settings.Monitor);
         foreach (var output in outputs)
         {
