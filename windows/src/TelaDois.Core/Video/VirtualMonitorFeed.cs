@@ -51,12 +51,13 @@ public sealed class VirtualMonitorFeed : IVideoFeed
                 log($"o monitor virtual {deviceName} continua no desktop depois de desligar");
             }
         }
-        catch (Exception e) when (e is DisplayChangeException or InvalidOperationException)
+        catch (Exception e)
         {
             log($"não deu para desligar o monitor virtual: {e.Message}");
         }
     }
 
+    /// <summary>Nunca lança: se a conferência falhar, registra e para de conferir (o vídeo segue).</summary>
     private async Task WatchAsync(TimeSpan interval)
     {
         try
@@ -75,8 +76,13 @@ public sealed class VirtualMonitorFeed : IVideoFeed
         catch (OperationCanceledException)
         {
         }
+        catch (Exception e)
+        {
+            _log($"não deu para conferir o monitor virtual: {e.Message}");
+        }
     }
 
+    /// <summary>Encerra a captura e, mesmo se isso falhar, tira o monitor do desktop (na dúvida, tenta tirar).</summary>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1)
@@ -84,12 +90,28 @@ public sealed class VirtualMonitorFeed : IVideoFeed
             return;
         }
         _gone.Cancel();
-        await _watch;
-        await _capture.DisposeAsync();
-        if (_monitor.IsAttached(_deviceName))
+        try
         {
-            DetachAndVerify(_monitor, _deviceName, _log);
+            await _watch;
+            await _capture.DisposeAsync();
         }
-        _gone.Dispose();
+        finally
+        {
+            bool attached;
+            try
+            {
+                attached = _monitor.IsAttached(_deviceName);
+            }
+            catch (Exception e)
+            {
+                _log($"não deu para conferir o monitor virtual: {e.Message}");
+                attached = true;
+            }
+            if (attached)
+            {
+                DetachAndVerify(_monitor, _deviceName, _log);
+            }
+            _gone.Dispose();
+        }
     }
 }

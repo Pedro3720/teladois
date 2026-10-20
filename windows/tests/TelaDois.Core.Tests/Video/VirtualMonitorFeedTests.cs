@@ -53,6 +53,48 @@ public class VirtualMonitorFeedTests
         Assert.Equal(new[] { monitor.Device }, monitor.Detached);
     }
 
+    /// <summary>Captura cujo descarte falha (ex.: o processo não deixou ser encerrado).</summary>
+    private sealed class FailingDisposeFeed : IVideoFeed
+    {
+        public VideoConfig Config => new(2556, 1179, 60);
+        public Task<AccessUnit> NextAsync(CancellationToken ct) => Task.Delay(Timeout.Infinite, ct).ContinueWith<AccessUnit>(_ => throw new OperationCanceledException(ct));
+        public ValueTask DisposeAsync() => ValueTask.FromException(new InvalidOperationException("o FFmpeg não saiu"));
+    }
+
+    [Fact]
+    public async Task WatchFailureIsLoggedAndDisposeStillStopsTheCaptureAndDetaches()
+    {
+        var monitor = new FakeVirtualMonitor { Attached = true };
+        var capture = new WaitingFeed();
+        var log = new ConcurrentQueue<string>();
+        var feed = new VirtualMonitorFeed(capture, monitor, monitor.Device, log.Enqueue, TimeSpan.FromMilliseconds(50));
+        monitor.IsAttachedError = new IOException("a API do Windows falhou");
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (!log.Any(line => line.StartsWith("não deu para conferir o monitor virtual", StringComparison.Ordinal)) && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(20);
+        }
+
+        await feed.DisposeAsync();
+
+        Assert.Contains("não deu para conferir o monitor virtual: a API do Windows falhou", log);
+        Assert.True(capture.Disposed);
+        Assert.Equal(new[] { monitor.Device }, monitor.Detached);
+        Assert.False(monitor.Attached);
+    }
+
+    [Fact]
+    public async Task DisposeDetachesEvenWhenTheCaptureFailsToDispose()
+    {
+        var monitor = new FakeVirtualMonitor { Attached = true };
+        var feed = new VirtualMonitorFeed(new FailingDisposeFeed(), monitor, monitor.Device, _ => { });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => feed.DisposeAsync().AsTask());
+
+        Assert.Equal(new[] { monitor.Device }, monitor.Detached);
+        Assert.False(monitor.Attached);
+    }
+
     [Fact]
     public async Task DisposeLogsWhenTheMonitorStaysOnTheDesktop()
     {

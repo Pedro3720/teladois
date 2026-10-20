@@ -48,5 +48,9 @@ internal sealed class FakeVirtualMonitor : IVirtualMonitor
         Detached.Enqueue(deviceName);
     }
 
-    public bool IsAttached(string deviceName) => Attached && deviceName == Device;
+    /// <summary>Se definido, <see cref="IsAttached"/> lança esta exceção (a API do Windows falhou).</summary>
+    public Exception? IsAttachedError { get; set; }
+
+    public bool IsAttached(string deviceName) =>
+        IsAttachedError is { } error ? throw error : Attached && deviceName == Device;
 }
