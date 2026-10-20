@@ -130,7 +130,8 @@ try {
     if ($existing) {
         Write-Host 'O monitor virtual já existe: atualizando o driver.'
         pnputil /add-driver $inf.FullName /install | Write-Host
-        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) { throw "pnputil falhou (código $LASTEXITCODE)." }
+        # 259 (ERROR_NO_MORE_ITEMS) = o driver já estava instalado e atualizado: nada a fazer, segue.
+        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010 -and $LASTEXITCODE -ne 259) { throw "pnputil falhou (código $LASTEXITCODE)." }
     } else {
         if ($languageMode -ne 'FullLanguage') { throw $restrictedMessage }
         Add-Type -TypeDefinition $DeviceCode
