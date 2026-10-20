@@ -12,6 +12,8 @@
 #>
 #Requires -RunAsAdministrator
 $ErrorActionPreference = 'Stop'
+# Sem isto, a barra de progresso do Invoke-WebRequest deixa o download do PowerShell 5.1 muito lento.
+$ProgressPreference = 'SilentlyContinue'
 
 $Version = '25.7.23'
 $Asset = 'VirtualDisplayDriver-x86.Driver.Only.zip'
@@ -19,6 +21,15 @@ $Sha256 = 'E24210692B442B39AF763536330CE78B423F19342B7A7792C26DE3944E418B3A'
 $Url = "https://github.com/VirtualDrivers/Virtual-Display-Driver/releases/download/$Version/$Asset"
 $HardwareId = 'Root\MttVDD'
 $ConfigDir = 'C:\VirtualDisplayDriver'
+$Signer = 'SignPath Foundation'
+
+# O Controle de Aplicativos do Windows (ex.: PC do trabalho) pode deixar o PowerShell em modo de linguagem restrito,
+# que bloqueia o Add-Type usado para criar o dispositivo.
+$languageMode = $ExecutionContext.SessionState.LanguageMode
+$restrictedMessage = "O PowerShell está em modo de linguagem restrito ($languageMode), provavelmente pelo Controle de Aplicativos do Windows: este instalador não consegue criar o monitor virtual. Peça ao administrador do PC para instalar o driver ou liberar o script. Sem o driver, o TelaDois duplica um monitor."
+if ($languageMode -ne 'FullLanguage') {
+    Write-Warning $restrictedMessage
+}
 
 # Cria o dispositivo raiz e instala o driver nele (o que o "devcon install" faz), pela SetupAPI.
 $DeviceCode = @'
@@ -103,7 +114,9 @@ try {
     if (-not $cat) { throw 'O catálogo de assinatura (.cat) não está no pacote.' }
     $signature = Get-AuthenticodeSignature $cat.FullName
     if ($signature.Status -ne 'Valid') { throw "Assinatura do driver inválida ($($signature.Status)): nada foi instalado." }
-    Write-Host "Assinado por: $($signature.SignerCertificate.Subject)"
+    $subject = $signature.SignerCertificate.Subject
+    if ($subject -notlike "*$Signer*") { throw "O driver está assinado por '$subject', não pela $($Signer): nada foi instalado." }
+    Write-Host "Assinado por: $subject"
 
     New-Item -ItemType Directory -Force $ConfigDir | Out-Null
     Copy-Item (Join-Path $PSScriptRoot 'vdd_settings.xml') (Join-Path $ConfigDir 'vdd_settings.xml') -Force
@@ -115,6 +128,7 @@ try {
         pnputil /add-driver $inf.FullName /install | Write-Host
         if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) { throw "pnputil falhou (código $LASTEXITCODE)." }
     } else {
+        if ($languageMode -ne 'FullLanguage') { throw $restrictedMessage }
         Add-Type -TypeDefinition $DeviceCode
         if ([TelaDoisVdd]::Install($HardwareId, $inf.FullName)) { Write-Host 'O Windows pediu reinício para terminar a instalação.' }
     }
