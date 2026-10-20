@@ -1,0 +1,47 @@
+using System.IO.Pipes;
+using System.Text;
+
+namespace TelaDois.Core.Display;
+
+public interface IDriverPipe
+{
+    /// <summary>true se o driver respondeu <c>PONG</c>; false se não está instalado, parado ou não respondeu a tempo.</summary>
+    Task<bool> PingAsync(CancellationToken ct);
+}
+
+/// <summary>
+/// Pipe do Virtual Display Driver (<c>\\.\pipe\MTTVirtualDisplayPipe</c>): comandos em UTF-16, respostas em ASCII.
+/// O TelaDois só manda <c>PING</c> (o pipe aceita qualquer usuário do PC — ver revisão de segurança da Etapa 6).
+/// </summary>
+public sealed class DriverPipe(string name = "MTTVirtualDisplayPipe") : IDriverPipe
+{
+    public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(1);
+
+    public async Task<bool> PingAsync(CancellationToken ct)
+    {
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        limit.CancelAfter(Timeout);
+        try
+        {
+            await using var pipe = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
+            await pipe.ConnectAsync(limit.Token);
+            await pipe.WriteAsync(Encoding.Unicode.GetBytes("PING"), limit.Token);
+            var buffer = new byte[256];
+            var reply = new StringBuilder();
+            int read;
+            while ((read = await pipe.ReadAsync(buffer, limit.Token)) > 0)
+            {
+                reply.Append(Encoding.ASCII.GetString(buffer, 0, read));
+                if (reply.ToString().Contains("PONG", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        catch (Exception e) when (e is OperationCanceledException && !ct.IsCancellationRequested || e is IOException or TimeoutException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+}
