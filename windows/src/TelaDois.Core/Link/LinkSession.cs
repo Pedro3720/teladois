@@ -8,8 +8,8 @@ public sealed record LinkSessionOptions(TimeSpan PingInterval, TimeSpan Timeout)
     public static LinkSessionOptions Default { get; } = new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(3));
 }
 
-/// <summary>Estado da conexão: resolução do iPhone e a última latência de ida e volta medida.</summary>
-public sealed record LinkStatus(HelloInfo Hello, TimeSpan? RoundTrip, VideoConfig? Video = null);
+/// <summary>Estado da conexão: resolução do iPhone, a última latência medida e, com o vídeo ligado, formato e tipo.</summary>
+public sealed record LinkStatus(HelloInfo Hello, TimeSpan? RoundTrip, VideoConfig? Video = null, VideoKind? Kind = null);
 
 public enum LinkEndReason
 {
@@ -21,13 +21,20 @@ public enum LinkEndReason
 
 /// <summary>
 /// Lado do PC: espera o HELLO, manda PING logo em seguida e a cada intervalo, mede o PONG e encerra no BYE,
-/// quando o iPhone fecha o socket ou após o tempo-limite sem receber nada (ou com uma escrita travada). Enquanto isso
-/// abre o vídeo em paralelo: se abrir, manda CONFIG e passa a mandar VIDEO; se falhar, a sessão segue sem vídeo.
-/// Ao sair, descarta o vídeo (mesmo o que terminar de abrir depois) e manda BYE.
+/// quando o iPhone fecha o socket ou após o tempo-limite sem receber nada (ou com uma escrita travada).
+/// O vídeo liga e desliga pelo <see cref="IVideoSwitch"/> (sem ele, fica ligado): ligar abre o feed em paralelo e
+/// manda CONFIG junto com a 1ª imagem; desligar — ou o feed parar sozinho, ou não abrir — descarta o feed e, se o
+/// iPhone tinha recebido CONFIG, manda VIDEO_END; a sessão continua. Ao sair, descarta o vídeo e manda BYE.
 /// </summary>
 public static class LinkSession
 {
-    public static async Task<LinkEndReason> RunAsync(Stream stream, Action<LinkStatus> onStatus, LinkSessionOptions options, CancellationToken ct, Func<HelloInfo, CancellationToken, Task<IVideoFeed?>>? openVideo = null)
+    public static async Task<LinkEndReason> RunAsync(
+        Stream stream,
+        Action<LinkStatus> onStatus,
+        LinkSessionOptions options,
+        CancellationToken ct,
+        Func<HelloInfo, CancellationToken, Task<IVideoFeed?>>? openVideo = null,
+        IVideoSwitch? videoSwitch = null)
     {
         var reader = new LinkFrameReader(stream);
         using var writeLock = new SemaphoreSlim(1, 1);
@@ -37,9 +44,11 @@ public static class LinkSession
         var statusLock = new object();
         LinkStatus? status = null;
         Task<LinkEndReason>? receiving = null;
+        CancellationTokenSource? videoCts = null;
         Task<IVideoFeed?>? opening = null;
         IVideoFeed? feed = null;
         Task? sending = null;
+        var configSent = 0;
 
         // Toda escrita, inclusive a espera pela vez, tem tempo-limite: um iPhone que parou de ler encerra a sessão.
         async Task SendAsync(LinkFrame frame, CancellationToken token)
@@ -74,6 +83,81 @@ public static class LinkSession
             }
         }
 
+        void StartVideo(HelloInfo hello)
+        {
+            if (openVideo is null)
+            {
+                return;
+            }
+            videoCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+            var token = videoCts.Token;
+            // Task.Run: uma abertura que trava ou lança sem await também fica numa tarefa observada.
+            opening = Task.Run(() => openVideo(hello, token), CancellationToken.None);
+        }
+
+        void StartSending(IVideoFeed activeFeed)
+        {
+            var token = videoCts!.Token;
+            sending = Task.Run(async () =>
+            {
+                // CONFIG só com a 1ª imagem pronta (I1): uma captura que falha logo não deixa o iPhone preto.
+                var unit = await activeFeed.NextAsync(token);
+                await SendAsync(LinkMessages.Config(activeFeed.Config), cts.Token);
+                Interlocked.Exchange(ref configSent, 1);
+                Update(s => s with { Video = activeFeed.Config, Kind = activeFeed.Kind });
+                var started = Stopwatch.StartNew();
+                while (true)
+                {
+                    // Escritas com o token da sessão: cancelar o vídeo no meio de uma escrita cortaria a mensagem.
+                    await SendAsync(LinkMessages.Video(unit.IsKeyframe, (ulong)(started.Elapsed.Ticks / 10), unit.Data), cts.Token);
+                    unit = await activeFeed.NextAsync(token);
+                }
+            }, CancellationToken.None);
+        }
+
+        // Para a abertura, o envio e o feed, sem mandar nada. Engole qualquer falha deles.
+        async Task DisposeVideoAsync()
+        {
+            videoCts?.Cancel();
+            await ObserveAsync(sending);
+            sending = null;
+            if (opening is not null)
+            {
+                try
+                {
+                    feed ??= await opening;
+                }
+                catch (Exception)
+                {
+                }
+                opening = null;
+            }
+            if (feed is not null)
+            {
+                try
+                {
+                    await feed.DisposeAsync();
+                }
+                catch (Exception)
+                {
+                }
+                feed = null;
+            }
+            videoCts?.Dispose();
+            videoCts = null;
+        }
+
+        // Desliga o vídeo com a sessão viva: o iPhone só recebe VIDEO_END se chegou a receber CONFIG.
+        async Task StopVideoAsync()
+        {
+            await DisposeVideoAsync();
+            if (Interlocked.Exchange(ref configSent, 0) == 1)
+            {
+                Update(s => s with { Video = null, Kind = null });
+                await SendAsync(LinkMessages.VideoEnd(), cts.Token);
+            }
+        }
+
         try
         {
             var hello = await ReadHelloAsync(reader, options.Timeout, cts.Token);
@@ -81,7 +165,8 @@ public static class LinkSession
             {
                 return LinkEndReason.Closed;
             }
-            status = new LinkStatus(hello.Value, null);
+            var helloInfo = hello.Value;
+            status = new LinkStatus(helloInfo, null);
             onStatus(status);
             Interlocked.Exchange(ref lastHeard, clock.ElapsedMilliseconds);
 
@@ -106,18 +191,18 @@ public static class LinkSession
                 return LinkEndReason.Closed;
             }, CancellationToken.None);
 
-            if (openVideo is not null)
+            var wantVideo = videoSwitch?.WantsVideo ?? true;
+            if (wantVideo)
             {
-                // Task.Run: uma abertura que trava ou lança sem await também fica numa tarefa observada.
-                var helloInfo = hello.Value;
-                opening = Task.Run(() => openVideo(helloInfo, cts.Token), CancellationToken.None);
+                StartVideo(helloInfo);
             }
+            var switchChanged = videoSwitch?.WaitForChangeAsync(wantVideo, cts.Token) ?? Task.Delay(Timeout.Infinite, cts.Token);
 
             await SendAsync(LinkMessages.Ping((ulong)clock.ElapsedMilliseconds), cts.Token);
             var tick = Task.Delay(options.PingInterval, cts.Token);
             while (true)
             {
-                var pending = new List<Task>(4) { receiving, tick };
+                var pending = new List<Task>(5) { receiving, tick, switchChanged };
                 if (sending is not null)
                 {
                     pending.Add(sending);
@@ -131,6 +216,25 @@ public static class LinkSession
                 {
                     return await receiving;
                 }
+                if (done == switchChanged)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var wanted = videoSwitch!.WantsVideo;
+                    switchChanged = videoSwitch.WaitForChangeAsync(wanted, cts.Token);
+                    if (wanted != wantVideo)
+                    {
+                        wantVideo = wanted;
+                        if (wanted)
+                        {
+                            StartVideo(helloInfo);
+                        }
+                        else
+                        {
+                            await StopVideoAsync();
+                        }
+                    }
+                    continue;
+                }
                 if (done == sending)
                 {
                     try
@@ -139,7 +243,11 @@ public static class LinkSession
                     }
                     catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                     {
-                        // O próprio vídeo parou (descartado por fora): fecha a sessão e o túnel abre outra.
+                        // O feed parou sozinho (ex.: o monitor virtual saiu do desktop): vídeo desligado, a sessão segue.
+                        await StopVideoAsync();
+                        wantVideo = false;
+                        videoSwitch?.VideoEnded();
+                        continue;
                     }
                     return LinkEndReason.Closed;
                 }
@@ -153,22 +261,18 @@ public static class LinkSession
                     }
                     catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
                     {
-                        // Sem Segunda Tela nesta sessão: o túnel continua (quem abre registra o motivo).
+                        // Quem abre registra o motivo.
                     }
                     if (feed is not null)
                     {
-                        var activeFeed = feed;
-                        await SendAsync(LinkMessages.Config(activeFeed.Config), cts.Token);
-                        Update(s => s with { Video = activeFeed.Config });
-                        var started = Stopwatch.StartNew();
-                        sending = Task.Run(async () =>
-                        {
-                            while (true)
-                            {
-                                var unit = await activeFeed.NextAsync(cts.Token);
-                                await SendAsync(LinkMessages.Video(unit.IsKeyframe, (ulong)(started.Elapsed.Ticks / 10), unit.Data), cts.Token);
-                            }
-                        }, CancellationToken.None);
+                        StartSending(feed);
+                    }
+                    else
+                    {
+                        // Sem Segunda Tela agora: o túnel continua e o atalho pode tentar de novo.
+                        await DisposeVideoAsync();
+                        wantVideo = false;
+                        videoSwitch?.VideoEnded();
                     }
                     continue;
                 }
@@ -198,29 +302,9 @@ public static class LinkSession
             // A limpeza engole qualquer falha das tarefas: a exceção que sai é a original da sessão.
             cts.Cancel();
             await ObserveAsync(receiving);
-            await ObserveAsync(sending);
-            if (opening is not null)
-            {
-                try
-                {
-                    feed ??= await opening;
-                }
-                catch (Exception)
-                {
-                }
-            }
             try
             {
-                if (feed is not null)
-                {
-                    try
-                    {
-                        await feed.DisposeAsync();
-                    }
-                    catch (Exception)
-                    {
-                    }
-                }
+                await DisposeVideoAsync();
             }
             finally
             {
