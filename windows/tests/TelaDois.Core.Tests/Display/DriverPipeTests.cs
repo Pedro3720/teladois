@@ -8,15 +8,26 @@ public class DriverPipeTests
 {
     private static string UniqueName() => $"teladois-teste-{Guid.NewGuid():N}";
 
-    /// <summary>Faz o papel do driver: lê o comando (UTF-16) e responde <paramref name="reply"/> em ASCII.</summary>
+    /// <summary>
+    /// Faz o papel do driver real (medido no Virtual Display Driver 25.7.23): lê o comando (UTF-16) e só
+    /// responde <paramref name="reply"/> em ASCII se o comando vier terminado em NUL; sem o NUL, fecha o pipe sem responder.
+    /// </summary>
     private static async Task<string> ServeOnceAsync(NamedPipeServerStream server, string reply)
     {
         await server.WaitForConnectionAsync();
         var buffer = new byte[256];
         var read = await server.ReadAsync(buffer);
-        await server.WriteAsync(Encoding.ASCII.GetBytes(reply));
-        await server.FlushAsync();
-        return Encoding.Unicode.GetString(buffer, 0, read);
+        var command = Encoding.Unicode.GetString(buffer, 0, read);
+        if (command.EndsWith('\0'))
+        {
+            await server.WriteAsync(Encoding.ASCII.GetBytes(reply));
+            await server.FlushAsync();
+        }
+        else
+        {
+            server.Disconnect();
+        }
+        return command;
     }
 
     [Fact]
@@ -26,7 +37,34 @@ public class DriverPipeTests
         await using var server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         var serving = ServeOnceAsync(server, "PONG");
         Assert.True(await new DriverPipe(name).PingAsync(CancellationToken.None));
-        Assert.Equal("PING", await serving.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal("PING\0", await serving.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public async Task TrueWhenTheReplyCarriesATrailingNul()
+    {
+        var name = UniqueName();
+        await using var server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        var serving = ServeOnceAsync(server, "PONG\0");
+        Assert.True(await new DriverPipe(name).PingAsync(CancellationToken.None));
+        await serving.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task RetriesOnceWhenTheDriverClosesTheFirstConnectionWithoutAnswering()
+    {
+        // Medido no driver real: ~5% dos PINGs recebem o pipe fechado sem resposta; a conexão seguinte responde.
+        var name = UniqueName();
+        await using var server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        var serving = Task.Run(async () =>
+        {
+            await server.WaitForConnectionAsync();
+            _ = await server.ReadAsync(new byte[256]);
+            server.Disconnect(); // 1ª conexão: fecha sem responder
+            await ServeOnceAsync(server, "PONG"); // 2ª: responde
+        });
+        Assert.True(await new DriverPipe(name) { Timeout = TimeSpan.FromSeconds(5) }.PingAsync(CancellationToken.None));
+        await serving.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [Fact]

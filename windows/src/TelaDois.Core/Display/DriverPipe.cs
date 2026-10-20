@@ -12,6 +12,11 @@ public interface IDriverPipe
 /// <summary>
 /// Pipe do Virtual Display Driver (<c>\\.\pipe\MTTVirtualDisplayPipe</c>): comandos em UTF-16, respostas em ASCII.
 /// O TelaDois só manda <c>PING</c> (o pipe aceita qualquer usuário do PC — ver revisão de segurança da Etapa 6).
+/// <para>
+/// O comando PRECISA terminar em NUL (<c>"PING\0"</c>, bytes <c>50 00 49 00 4E 00 47 00 00 00</c>). Medido no
+/// Virtual Display Driver 25.7.23: sem o NUL o driver fecha o pipe sem responder; com o NUL responde 4 bytes ASCII
+/// <c>PONG</c>; um <c>PING</c> em ASCII não recebe resposta.
+/// </para>
 /// </summary>
 public sealed class DriverPipe(string name = "MTTVirtualDisplayPipe") : IDriverPipe
 {
@@ -23,25 +28,35 @@ public sealed class DriverPipe(string name = "MTTVirtualDisplayPipe") : IDriverP
         limit.CancelAfter(Timeout);
         try
         {
-            await using var pipe = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
-            await pipe.ConnectAsync(limit.Token);
-            await pipe.WriteAsync(Encoding.Unicode.GetBytes("PING"), limit.Token);
-            var buffer = new byte[256];
-            var reply = new StringBuilder();
-            int read;
-            while ((read = await pipe.ReadAsync(buffer, limit.Token)) > 0)
-            {
-                reply.Append(Encoding.ASCII.GetString(buffer, 0, read));
-                if (reply.ToString().Contains("PONG", StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
-            return false;
+            // Medido no driver real: ~5% das conexões são fechadas sem resposta (a seguinte responde).
+            // Uma só repetição, dentro do mesmo limite de tempo.
+            var answer = await TryOnceAsync(limit.Token);
+            answer ??= await TryOnceAsync(limit.Token);
+            return answer == true;
         }
         catch (Exception e) when (e is OperationCanceledException && !ct.IsCancellationRequested || e is IOException or TimeoutException or UnauthorizedAccessException)
         {
             return false;
         }
+    }
+
+    /// <summary>true = PONG; false = respondeu outra coisa; null = o driver fechou o pipe sem responder nada.</summary>
+    private async Task<bool?> TryOnceAsync(CancellationToken token)
+    {
+        await using var pipe = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
+        await pipe.ConnectAsync(token);
+        await pipe.WriteAsync(Encoding.Unicode.GetBytes("PING\0"), token); // o NUL final é obrigatório
+        var buffer = new byte[256];
+        var reply = new StringBuilder();
+        int read;
+        while ((read = await pipe.ReadAsync(buffer, token)) > 0)
+        {
+            reply.Append(Encoding.ASCII.GetString(buffer, 0, read));
+            if (reply.ToString().Contains("PONG", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return reply.Length == 0 ? null : false;
     }
 }
