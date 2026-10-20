@@ -8,7 +8,11 @@
   C:\VirtualDisplayDriver\vdd_settings.xml e cria o dispositivo Root\MttVDD.
   O pacote 25.7.23 é assinado pela SignPath Foundation: o Windows pode perguntar se confia
   nesse fornecedor antes de instalar.
-  Depois disso o TelaDois não precisa de administrador: ele só põe e tira o monitor do desktop.
+  Também cria duas tarefas agendadas sob demanda (\TelaDois\Ligar monitor virtual e \TelaDois\Desligar
+  monitor virtual, como SYSTEM, disparáveis por qualquer usuário) e deixa o dispositivo DESATIVADO ao fim:
+  o monitor virtual só aparece no Windows enquanto o TelaDois estiver com o modo monitor ligado.
+  Depois disso o TelaDois não precisa de administrador. Se algo falhar depois da instalação do driver,
+  basta rodar o instalador de novo.
 #>
 #Requires -RunAsAdministrator
 $ErrorActionPreference = 'Stop'
@@ -134,6 +138,8 @@ try {
     }
     # O Windows só deixa de listar o monitor com o dispositivo desativado (precisa de administrador).
     # Duas tarefas sob demanda, como SYSTEM, que qualquer usuário do PC pode disparar: o TelaDois liga/desliga sem senha.
+    # Os objetos COM do Agendador de Tarefas também são bloqueados no modo de linguagem restrito.
+    if ($languageMode -ne 'FullLanguage') { throw $restrictedMessage }
     $device = Get-PnpDevice -Class Display -ErrorAction SilentlyContinue | Where-Object { $_.HardwareID -contains $HardwareId } | Select-Object -First 1
     if (-not $device) { throw 'O dispositivo do monitor virtual não apareceu depois da instalação.' }
     $instanceId = $device.InstanceId
@@ -160,8 +166,15 @@ try {
         Write-Host "Tarefa \TelaDois\$($pair[0]) pronta."
     }
     pnputil /disable-device "$instanceId" | Write-Host
-    Write-Host 'Monitor virtual desativado: o Windows só vai mostrá-lo quando o TelaDois ligar o modo monitor.'
-    Write-Host 'Monitor virtual instalado. Abra (ou reabra) o TelaDois: ele tira o monitor do desktop até o iPhone conectar.'
+    if ($LASTEXITCODE -eq 3010) {
+        Write-Host 'Monitor virtual desativado, mas o monitor só some da lista do Windows depois de reiniciar o Windows.'
+    } elseif ($LASTEXITCODE -ne 0) {
+        throw "pnputil não conseguiu desativar o monitor virtual (código $LASTEXITCODE). Rode o instalador de novo."
+    } else {
+        Write-Host 'Monitor virtual desativado: o Windows só vai mostrá-lo quando o TelaDois ligar o modo monitor.'
+    }
+    Write-Host 'Monitor virtual instalado e deixado desativado. O TelaDois ativa o dispositivo só enquanto o modo monitor estiver ligado. Abra (ou reabra) o TelaDois.'
+    Write-Host 'Se algo falhar depois da instalação do driver, basta rodar este instalador de novo.'
 }
 finally {
     Remove-Item -Recurse -Force $work
