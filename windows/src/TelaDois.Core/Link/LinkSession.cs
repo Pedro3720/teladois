@@ -148,6 +148,14 @@ public static class LinkSession
                     if (unit is null && firstFrame.IsCancellationRequested && !token.IsCancellationRequested)
                     {
                         log?.Invoke($"nenhuma imagem do vídeo em {options.FirstFrameTimeout.TotalSeconds:0} s: Segunda Tela desligada");
+                        try
+                        {
+                            activeFeed.FirstFrameMissed();
+                        }
+                        catch (Exception)
+                        {
+                            // Só um aviso para o feed esquecer a compressão: falhar nele não pode derrubar o envio.
+                        }
                     }
                 }
                 if (unit is null || token.IsCancellationRequested)

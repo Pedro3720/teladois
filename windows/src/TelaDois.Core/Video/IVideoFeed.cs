@@ -21,4 +21,12 @@ public interface IVideoFeed : IAsyncDisposable
     VideoKind Kind => VideoKind.Mirror;
 
     Task<AccessUnit> NextAsync(CancellationToken ct);
+
+    /// <summary>
+    /// A sessão avisa que o prazo da 1ª imagem estourou (e vai descartar o feed). Diferente de desligar ou tirar o cabo,
+    /// que não chamam isto: aqui a compressão escolhida é suspeita. Não lança.
+    /// </summary>
+    void FirstFrameMissed()
+    {
+    }
 }

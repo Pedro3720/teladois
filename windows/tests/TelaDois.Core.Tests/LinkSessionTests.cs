@@ -368,9 +368,13 @@ public class LinkSessionTests
     {
         private int _sent;
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _missed;
         public bool Disposed { get; private set; }
+        public int FirstFrameMisses => Volatile.Read(ref _missed);
         public VideoConfig Config => config;
         public VideoKind Kind => kind;
+
+        public void FirstFrameMissed() => Interlocked.Increment(ref _missed);
 
         public async Task<AccessUnit> NextAsync(CancellationToken ct)
         {
@@ -530,6 +534,8 @@ public class LinkSessionTests
         await AnswerUntilAsync(phone, reader, () => feed.Disposed && seen.Count(t => t == LinkMessageType.Ping) >= 6, seen, cts.Token);
         Assert.DoesNotContain(LinkMessageType.Config, seen);
         Assert.DoesNotContain(LinkMessageType.VideoEnd, seen);
+        // O usuário desligou: o feed não "faltou" a 1ª imagem (o perfil de compressão não deve ser esquecido).
+        Assert.Equal(0, feed.FirstFrameMisses);
 
         await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
         Assert.Equal(LinkEndReason.Bye, await run);
@@ -564,6 +570,7 @@ public class LinkSessionTests
         Assert.DoesNotContain(LinkMessageType.Config, seen);
         Assert.DoesNotContain(LinkMessageType.VideoEnd, seen);
         Assert.Contains("nenhuma imagem do vídeo em 2 s: Segunda Tela desligada", log);
+        Assert.Equal(1, feed.FirstFrameMisses); // o prazo estourou: o feed é avisado (esquece a compressão)
 
         await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
         Assert.Equal(LinkEndReason.Bye, await run);

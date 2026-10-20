@@ -51,6 +51,58 @@ public class FfmpegCaptureTests
     }
 
     [Fact]
+    public async Task DisposingBeforeTheFirstFrameDoesNotReportAMissingPicture()
+    {
+        // Desligar/tirar o cabo antes da 1ª imagem é decisão do usuário: não deve fazer esquecer a compressão.
+        var stdout = new BlockingStream();
+        var reports = 0;
+        var runner = new FakeProcessRunner(_ => new FakeProcess(0, hangs: true, stream: stdout));
+        var capture = new FfmpegCapture(runner, "ffmpeg", ["-x"], Config, _ => { }, NoRestart, endedWithoutFrames: () => Interlocked.Increment(ref reports));
+        await stdout.ReadStarted.Task.WaitAsync(Generous);
+        await capture.DisposeAsync();
+        await capture.DisposeAsync();
+        Assert.Equal(0, reports);
+    }
+
+    [Fact]
+    public async Task ReportsOnceWhenFfmpegEndsWithoutEverProducingAPicture()
+    {
+        var reports = 0;
+        var reported = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runner = new FakeProcessRunner(_ => new FakeProcess(1, errors: "falhou"));
+        var capture = new FfmpegCapture(runner, "ffmpeg", ["-x"], Config, _ => { }, FastBackoff, endedWithoutFrames: () =>
+        {
+            Interlocked.Increment(ref reports);
+            reported.TrySetResult();
+        });
+        await reported.Task.WaitAsync(Generous);
+        await Task.Delay(100); // várias reexecuções seguintes: continua sendo uma só
+        await capture.DisposeAsync();
+        Assert.Equal(1, reports);
+    }
+
+    [Fact]
+    public async Task FirstFrameMissedReportsOnceWhileNoPictureCameAndNeverAfterOne()
+    {
+        var reports = 0;
+        var stdout = new BlockingStream();
+        var hanging = new FfmpegCapture(new FakeProcessRunner(_ => new FakeProcess(0, hangs: true, stream: stdout)), "ffmpeg", ["-x"], Config, _ => { }, NoRestart,
+            endedWithoutFrames: () => Interlocked.Increment(ref reports));
+        await stdout.ReadStarted.Task.WaitAsync(Generous);
+        hanging.FirstFrameMissed();
+        hanging.FirstFrameMissed();
+        await hanging.DisposeAsync();
+        Assert.Equal(1, reports);
+
+        var delivering = new FfmpegCapture(new FakeProcessRunner(_ => new FakeProcess(0, AccessUnitReaderTests.Fixture())), "ffmpeg", ["-x"], Config, _ => { }, NoRestart,
+            endedWithoutFrames: () => Interlocked.Increment(ref reports));
+        await delivering.NextAsync(new CancellationTokenSource(Generous).Token);
+        delivering.FirstFrameMissed();
+        await delivering.DisposeAsync();
+        Assert.Equal(1, reports);
+    }
+
+    [Fact]
     public async Task LogsOnceWhenTheCableFallsBehind()
     {
         // A 1ª imagem (completa) fica na fila sem ninguém ler; as outras 3 chegam bem depois de 1 ms.

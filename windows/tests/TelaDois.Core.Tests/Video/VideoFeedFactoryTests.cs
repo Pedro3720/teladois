@@ -235,10 +235,20 @@ public class VideoFeedFactoryTests
         }
     }
 
+    /// <summary>Sondagem: só o h264_mf funciona; captura: o FFmpeg fica rodando sem entregar nenhuma imagem.</summary>
+    private static (FakeProcessRunner Runner, VideoFeedFactory Factory, ConcurrentQueue<string> Log) HangingCapture(bool extend)
+    {
+        var runner = new FakeProcessRunner(args => args.Contains("-frames:v") ? new FakeProcess(args.Contains("h264_mf") ? 0 : 1) : new FakeProcess(0, hangs: true, stream: new BlockingStream()));
+        var monitor = new FakeVirtualMonitor { Installed = extend };
+        var log = new ConcurrentQueue<string>();
+        var factory = new VideoFeedFactory("ffmpeg", runner, () => monitor.Attached ? new[] { Main, Virtual } : new[] { Main, Side }, () => null, log.Enqueue, monitor);
+        return (runner, factory, log);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task CaptureThatNeverDeliversAFrameMakesTheNextOpenProbeAgain(bool extend)
+    public async Task CaptureThatExitsWithoutAFrameMakesTheNextOpenProbeAgain(bool extend)
     {
         // Sondagem: só o h264_mf funciona; captura: o FFmpeg sai sem imagem (a linha real falha nesta saída).
         var runner = new FakeProcessRunner(args => args.Contains("-frames:v") ? new FakeProcess(args.Contains("h264_mf") ? 0 : 1) : new FakeProcess(1));
@@ -250,12 +260,56 @@ public class VideoFeedFactoryTests
         var first = await factory.OpenAsync(Hello, CancellationToken.None);
         Assert.Equal(extend ? VideoKind.Extend : VideoKind.Mirror, first!.Kind);
         var probesBefore = Probes();
+        // O FFmpeg sai sozinho (sem ninguém desligar): a captura avisa e a compressão é esquecida.
+        await WaitForLogAsync(log, "a captura com mf terminou sem nenhuma imagem: a próxima conexão testa as compressões de novo");
+        await first.DisposeAsync();
+
+        await using var second = await factory.OpenAsync(Hello, CancellationToken.None);
+        Assert.NotNull(second);
+        Assert.Equal(2 * probesBefore, Probes());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FirstFrameDeadlineMakesTheNextOpenProbeAgain(bool extend)
+    {
+        var (runner, factory, log) = HangingCapture(extend);
+        var first = await factory.OpenAsync(Hello, CancellationToken.None);
+        var probesBefore = ProbeCount(runner);
+        first!.FirstFrameMissed(); // o prazo da 1ª imagem estourou (a sessão avisa o feed)
         await first.DisposeAsync();
         Assert.Contains("a captura com mf terminou sem nenhuma imagem: a próxima conexão testa as compressões de novo", log);
 
         await using var second = await factory.OpenAsync(Hello, CancellationToken.None);
         Assert.NotNull(second);
-        Assert.Equal(2 * probesBefore, Probes());
+        Assert.Equal(2 * probesBefore, ProbeCount(runner));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SwitchingOffBeforeTheFirstFrameKeepsTheProfile(bool extend)
+    {
+        var (runner, factory, log) = HangingCapture(extend);
+        var first = await factory.OpenAsync(Hello, CancellationToken.None);
+        var probesBefore = ProbeCount(runner);
+        await first!.DisposeAsync(); // o usuário desligou (ou tirou o cabo) antes da 1ª imagem
+        Assert.DoesNotContain(log, line => line.Contains("testa as compressões de novo"));
+
+        await using var second = await factory.OpenAsync(Hello, CancellationToken.None);
+        Assert.NotNull(second);
+        Assert.Equal(probesBefore, ProbeCount(runner));
+    }
+
+    private static async Task WaitForLogAsync(ConcurrentQueue<string> log, string line)
+    {
+        var until = Environment.TickCount64 + 5000;
+        while (!log.Contains(line))
+        {
+            Assert.True(Environment.TickCount64 < until, $"o registro não recebeu: {line}");
+            await Task.Delay(10);
+        }
     }
 
     [Fact]

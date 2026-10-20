@@ -20,10 +20,14 @@ public sealed class FfmpegCapture : IVideoFeed
     private readonly Task _pump;
     private readonly Action? _endedWithoutFrames;
     private int _produced;
-    private int _disposed;
+    private int _reported;
 
     /// <param name="maxQueueAge">Idade máxima de uma imagem esperando o cabo (padrão 100 ms, ver <see cref="FrameQueue"/>).</param>
-    /// <param name="endedWithoutFrames">Chamado uma vez no descarte se o FFmpeg não produziu nenhuma imagem.</param>
+    /// <param name="endedWithoutFrames">
+    /// Chamado no máximo uma vez, quando a linha de captura falha sem nunca ter produzido uma imagem: o FFmpeg termina
+    /// (ou não inicia) sozinho, ou a sessão avisa por <see cref="FirstFrameMissed"/> que o prazo da 1ª imagem estourou.
+    /// Descartar (o usuário desligou, tirou o cabo ou saiu) não chama: isso não diz nada sobre a compressão.
+    /// </param>
     public FfmpegCapture(IProcessRunner runner, string ffmpegPath, IReadOnlyList<string> arguments, VideoConfig config, Action<string> log, IReadOnlyList<TimeSpan>? backoff = null, TimeSpan? maxQueueAge = null, Action? endedWithoutFrames = null)
     {
         var waits = backoff ?? DefaultBackoff;
@@ -78,6 +82,7 @@ public sealed class FfmpegCapture : IVideoFeed
             {
                 return;
             }
+            ReportNoFrames();
             var wait = waits[Math.Min(attempt, waits.Count - 1)];
             attempt++;
             log($"FFmpeg: nova tentativa em {wait.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture)} ms");
@@ -154,14 +159,21 @@ public sealed class FfmpegCapture : IVideoFeed
         }
     }
 
+    /// <summary>O prazo da 1ª imagem estourou: se o FFmpeg ainda não entregou nenhuma, avisa (uma vez) que a compressão falhou.</summary>
+    public void FirstFrameMissed() => ReportNoFrames();
+
+    private void ReportNoFrames()
+    {
+        if (Volatile.Read(ref _produced) == 0 && Interlocked.Exchange(ref _reported, 1) == 0)
+        {
+            _endedWithoutFrames?.Invoke();
+        }
+    }
+
     /// <summary>Idempotente: pode ser chamado de novo (ou ao mesmo tempo) sem lançar.</summary>
     public async ValueTask DisposeAsync()
     {
         await _cts.CancelAsync();
         await _pump;
-        if (Interlocked.Exchange(ref _disposed, 1) == 0 && Volatile.Read(ref _produced) == 0)
-        {
-            _endedWithoutFrames?.Invoke();
-        }
     }
 }

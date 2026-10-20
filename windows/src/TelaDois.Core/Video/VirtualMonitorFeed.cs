@@ -37,6 +37,8 @@ public sealed class VirtualMonitorFeed : IVideoFeed
         return await _capture.NextAsync(linked.Token);
     }
 
+    public void FirstFrameMissed() => _capture.FirstFrameMissed();
+
     /// <summary>
     /// Tira o monitor do desktop pelo <see cref="IVirtualMonitor"/> (que ignora qualquer monitor que não seja o virtual) e,
     /// como o desligamento é silencioso, confere se ele saiu mesmo; falhas só vão para o registro.
