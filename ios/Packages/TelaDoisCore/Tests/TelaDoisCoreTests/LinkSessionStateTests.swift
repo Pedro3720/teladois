@@ -19,6 +19,12 @@ final class LinkSessionStateTests: XCTestCase {
         XCTAssertEqual(state.receive(LinkFrame(type: 99), now: t0), [])
     }
 
+    func testVideoEndNeedsNoReplyAndKeepsTheSessionAlive() {
+        var state = LinkSessionState(now: t0)
+        XCTAssertEqual(state.receive(LinkProtocol.videoEnd(), now: t0.addingTimeInterval(2)), [])
+        XCTAssertFalse(state.isTimedOut(now: t0.addingTimeInterval(4.5)))
+    }
+
     func testTimesOutAfterThreeSecondsOfSilence() {
         let state = LinkSessionState(now: t0)
         XCTAssertFalse(state.isTimedOut(now: t0.addingTimeInterval(3)))

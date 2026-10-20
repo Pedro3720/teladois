@@ -28,6 +28,11 @@ final class LinkProtocolTests: XCTestCase {
         )
     }
 
+    func testVideoEndMatchesGoldenBytes() {
+        XCTAssertEqual(LinkProtocol.videoEnd().encoded(), hex("0800000000"))
+        XCTAssertEqual(LinkFrame(type: 8).messageType, .videoEnd)
+    }
+
     func testParsesConfigAndVideo() {
         XCTAssertEqual(
             LinkProtocol.parseConfig(LinkProtocol.config(width: 2556, height: 1179, fps: 30)),

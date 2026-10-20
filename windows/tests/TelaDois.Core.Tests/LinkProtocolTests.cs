@@ -22,6 +22,14 @@ public class LinkProtocolTests
             LinkMessages.Video(true, 1000, Convert.FromHexString("0000000109F0")).Encode());
 
     [Fact]
+    public void VideoEndMatchesGoldenBytes() =>
+        Assert.Equal(Convert.FromHexString("0800000000"), LinkMessages.VideoEnd().Encode());
+
+    [Fact]
+    public void VideoEndIsAKnownType() =>
+        Assert.Equal(LinkMessageType.VideoEnd, new LinkFrame(8, []).MessageType);
+
+    [Fact]
     public void ParsesConfigAndVideo()
     {
         Assert.True(LinkMessages.TryParseConfig(LinkMessages.Config(new VideoConfig(2556, 1179, 30)), out var config));
