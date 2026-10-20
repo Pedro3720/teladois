@@ -7,8 +7,24 @@ public readonly record struct HelloInfo(ushort Version, uint Width, uint Height)
 /// <summary>Formato do vídeo transmitido: resolução do monitor capturado e quadros por segundo.</summary>
 public readonly record struct VideoConfig(uint Width, uint Height, ushort Fps);
 
+/// <summary>
+/// Medidores do iPhone no último intervalo (ele zera depois de mandar). Descartadas = pelo decodificador (sem formato,
+/// esperando imagem completa ou depois de uma falha); durações em µs.
+/// </summary>
+public readonly record struct LinkStats(
+    uint FramesReceived,
+    uint FramesEnqueued,
+    uint FramesDropped,
+    uint BytesReceived,
+    uint MainLagAvgMicros,
+    uint MainLagMaxMicros,
+    uint ReceiveToEnqueueAvgMicros,
+    uint ReceiveToEnqueueMaxMicros,
+    uint RendererFailures);
+
 public static class LinkMessages
 {
+    private const int StatsFields = 9;
     public const ushort ProtocolVersion = 1;
     public const ushort Port = 7100;
 
@@ -93,6 +109,34 @@ public static class LinkMessages
 
     /// <summary>O PC parou a Segunda Tela sem desconectar: o iPhone volta ao relógio.</summary>
     public static LinkFrame VideoEnd() => new(LinkMessageType.VideoEnd);
+
+    public static LinkFrame Stats(LinkStats stats)
+    {
+        uint[] fields =
+        [
+            stats.FramesReceived, stats.FramesEnqueued, stats.FramesDropped, stats.BytesReceived,
+            stats.MainLagAvgMicros, stats.MainLagMaxMicros, stats.ReceiveToEnqueueAvgMicros, stats.ReceiveToEnqueueMaxMicros,
+            stats.RendererFailures,
+        ];
+        var payload = new byte[StatsFields * 4];
+        for (var i = 0; i < fields.Length; i++)
+        {
+            BinaryPrimitives.WriteUInt32BigEndian(payload.AsSpan(i * 4), fields[i]);
+        }
+        return new LinkFrame(LinkMessageType.Stats, payload);
+    }
+
+    public static bool TryParseStats(LinkFrame frame, out LinkStats stats)
+    {
+        stats = default;
+        if (frame.MessageType != LinkMessageType.Stats || frame.Payload.Length != StatsFields * 4)
+        {
+            return false;
+        }
+        uint Field(int index) => BinaryPrimitives.ReadUInt32BigEndian(frame.Payload.AsSpan(index * 4));
+        stats = new LinkStats(Field(0), Field(1), Field(2), Field(3), Field(4), Field(5), Field(6), Field(7), Field(8));
+        return true;
+    }
 
     /// <summary>Carimbo de tempo de um PING ou PONG.</summary>
     public static bool TryReadTimestamp(LinkFrame frame, out ulong timestamp)

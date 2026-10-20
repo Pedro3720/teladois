@@ -13,6 +13,8 @@ public enum LinkMessageType : byte
     Pong = 6,
     Bye = 7,
     VideoEnd = 8,
+    /// <summary>iPhone → PC, 1 vez por segundo com a Segunda Tela ligada: medidores do último intervalo.</summary>
+    Stats = 9,
 }
 
 /// <summary>Uma mensagem: <c>[tipo: 1 byte][tamanho: 4 bytes big-endian][dados]</c>.</summary>

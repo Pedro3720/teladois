@@ -30,6 +30,31 @@ public class LinkProtocolTests
         Assert.Equal(LinkMessageType.VideoEnd, new LinkFrame(8, []).MessageType);
 
     [Fact]
+    public void StatsMatchesGoldenBytes()
+    {
+        Assert.Equal(
+            Convert.FromHexString("0900000024000000010000000200000003000000040000000500000006000000070000000800000009"),
+            LinkMessages.Stats(new LinkStats(1, 2, 3, 4, 5, 6, 7, 8, 9)).Encode());
+        Assert.Equal(LinkMessageType.Stats, new LinkFrame(9, []).MessageType);
+    }
+
+    [Fact]
+    public void ParsesStats()
+    {
+        var stats = new LinkStats(60, 59, 1, 400_000, 2_000, 40_000, 1_000, 9_000, 0);
+        Assert.True(LinkMessages.TryParseStats(LinkMessages.Stats(stats), out var parsed));
+        Assert.Equal(stats, parsed);
+    }
+
+    [Fact]
+    public void RejectsStatsWithWrongSize()
+    {
+        Assert.False(LinkMessages.TryParseStats(new LinkFrame(LinkMessageType.Stats, new byte[35]), out _));
+        Assert.False(LinkMessages.TryParseStats(new LinkFrame(LinkMessageType.Stats, new byte[37]), out _));
+        Assert.False(LinkMessages.TryParseStats(new LinkFrame(LinkMessageType.Pong, new byte[36]), out _));
+    }
+
+    [Fact]
     public void ParsesConfigAndVideo()
     {
         Assert.True(LinkMessages.TryParseConfig(LinkMessages.Config(new VideoConfig(2556, 1179, 30)), out var config));
