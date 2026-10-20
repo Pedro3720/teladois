@@ -68,6 +68,22 @@ public class DriverPipeTests
     }
 
     [Fact]
+    public async Task RetriesWhenTheDriverDropsTheConnectionBeforeReading()
+    {
+        // O cliente pode levar IOException (pipe quebrado/fechando) ao escrever ou ler: conta como "fechou sem responder".
+        var name = UniqueName();
+        await using var server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        var serving = Task.Run(async () =>
+        {
+            await server.WaitForConnectionAsync();
+            server.Disconnect(); // 1ª conexão: aceita e derruba antes de ler
+            await ServeOnceAsync(server, "PONG"); // 2ª: responde
+        });
+        Assert.True(await new DriverPipe(name) { Timeout = TimeSpan.FromSeconds(5) }.PingAsync(CancellationToken.None));
+        await serving.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public async Task FalseWhenThePipeAnswersSomethingElse()
     {
         var name = UniqueName();

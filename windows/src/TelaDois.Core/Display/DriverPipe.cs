@@ -22,16 +22,26 @@ public sealed class DriverPipe(string name = "MTTVirtualDisplayPipe") : IDriverP
 {
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(1);
 
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(50);
+
     public async Task<bool> PingAsync(CancellationToken ct)
     {
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
         limit.CancelAfter(Timeout);
         try
         {
-            // Medido no driver real: ~5% das conexões são fechadas sem resposta (a seguinte responde).
-            // Uma só repetição, dentro do mesmo limite de tempo.
-            var answer = await TryOnceAsync(limit.Token);
-            answer ??= await TryOnceAsync(limit.Token);
+            // Medido no driver real: de vez em quando ele fecha a conexão sem responder (ou o pipe quebra
+            // durante connect/write/read) e a conexão seguinte responde. Até 3 tentativas, com uma pausa curta,
+            // todas dentro do mesmo limite de tempo.
+            bool? answer = null;
+            for (var attempt = 0; attempt < 3 && answer is null; attempt++)
+            {
+                if (attempt > 0)
+                {
+                    await Task.Delay(RetryDelay, limit.Token);
+                }
+                answer = await TryOnceAsync(limit.Token);
+            }
             return answer == true;
         }
         catch (Exception e) when (e is OperationCanceledException && !ct.IsCancellationRequested || e is IOException or TimeoutException or UnauthorizedAccessException)
@@ -40,22 +50,29 @@ public sealed class DriverPipe(string name = "MTTVirtualDisplayPipe") : IDriverP
         }
     }
 
-    /// <summary>true = PONG; false = respondeu outra coisa; null = o driver fechou o pipe sem responder nada.</summary>
+    /// <summary>true = PONG; false = respondeu outra coisa; null = o driver fechou/quebrou o pipe sem responder nada.</summary>
     private async Task<bool?> TryOnceAsync(CancellationToken token)
     {
-        await using var pipe = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
-        await pipe.ConnectAsync(token);
-        await pipe.WriteAsync(Encoding.Unicode.GetBytes("PING\0"), token); // o NUL final é obrigatório
-        var buffer = new byte[256];
         var reply = new StringBuilder();
-        int read;
-        while ((read = await pipe.ReadAsync(buffer, token)) > 0)
+        try
         {
-            reply.Append(Encoding.ASCII.GetString(buffer, 0, read));
-            if (reply.ToString().Contains("PONG", StringComparison.Ordinal))
+            await using var pipe = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
+            await pipe.ConnectAsync(token);
+            await pipe.WriteAsync(Encoding.Unicode.GetBytes("PING\0"), token); // o NUL final é obrigatório
+            var buffer = new byte[256];
+            int read;
+            while ((read = await pipe.ReadAsync(buffer, token)) > 0)
             {
-                return true;
+                reply.Append(Encoding.ASCII.GetString(buffer, 0, read));
+                if (reply.ToString().Contains("PONG", StringComparison.Ordinal))
+                {
+                    return true;
+                }
             }
+        }
+        catch (IOException) when (reply.Length == 0)
+        {
+            return null; // pipe quebrado/fechando antes de qualquer resposta
         }
         return reply.Length == 0 ? null : false;
     }
