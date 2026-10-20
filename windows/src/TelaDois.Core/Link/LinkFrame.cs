@@ -12,6 +12,7 @@ public enum LinkMessageType : byte
     Ping = 5,
     Pong = 6,
     Bye = 7,
+    VideoEnd = 8,
 }
 
 /// <summary>Uma mensagem: <c>[tipo: 1 byte][tamanho: 4 bytes big-endian][dados]</c>.</summary>

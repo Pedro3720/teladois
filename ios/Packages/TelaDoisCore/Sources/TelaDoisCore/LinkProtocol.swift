@@ -2,7 +2,7 @@ import Foundation
 
 /// Tipos de mensagem do protocolo PC ↔ iPhone (spec §3.4).
 public enum LinkMessageType: UInt8, Sendable {
-    case hello = 1, config, video, keyframeRequest, ping, pong, bye
+    case hello = 1, config, video, keyframeRequest, ping, pong, bye, videoEnd
 }
 
 /// Uma mensagem: `[tipo: 1 byte][tamanho: 4 bytes big-endian][dados]`.
@@ -124,6 +124,9 @@ public enum LinkProtocol {
     }
 
     public static func bye() -> LinkFrame { LinkFrame(.bye) }
+
+    /// O PC parou a Segunda Tela sem desconectar: volta ao relógio.
+    public static func videoEnd() -> LinkFrame { LinkFrame(.videoEnd) }
 
     /// Carimbo de tempo de um `PING` ou `PONG`.
     public static func timestamp(of frame: LinkFrame) -> UInt64? {

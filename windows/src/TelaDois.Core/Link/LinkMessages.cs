@@ -91,6 +91,9 @@ public static class LinkMessages
 
     public static LinkFrame Bye() => new(LinkMessageType.Bye);
 
+    /// <summary>O PC parou a Segunda Tela sem desconectar: o iPhone volta ao relógio.</summary>
+    public static LinkFrame VideoEnd() => new(LinkMessageType.VideoEnd);
+
     /// <summary>Carimbo de tempo de um PING ou PONG.</summary>
     public static bool TryReadTimestamp(LinkFrame frame, out ulong timestamp)
     {
