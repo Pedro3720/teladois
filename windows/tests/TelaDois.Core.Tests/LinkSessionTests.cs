@@ -182,12 +182,16 @@ public class LinkSessionTests
         }
     }
 
-    /// <summary>Lado do iPhone: lê mensagens (anotando o tipo em <c>seen</c>) e responde PING com PONG até <c>done</c>.</summary>
-    private static async Task AnswerUntilAsync(Stream phone, LinkFrameReader reader, Func<bool> done, List<LinkMessageType> seen, CancellationToken ct)
+    /// <summary>
+    /// Lado do iPhone: lê mensagens (anotando o tipo em <c>seen</c> e, se pedido, a hora de chegada em ms em <c>arrivals</c>)
+    /// e responde PING com PONG até <c>done</c>.
+    /// </summary>
+    private static async Task AnswerUntilAsync(Stream phone, LinkFrameReader reader, Func<bool> done, List<LinkMessageType> seen, CancellationToken ct, List<long>? arrivals = null)
     {
         while (!done())
         {
             var frame = await reader.NextAsync(ct) ?? throw new IOException("o PC fechou o socket");
+            arrivals?.Add(Environment.TickCount64);
             seen.Add(frame.MessageType ?? throw new InvalidDataException($"tipo desconhecido: {frame.Type}"));
             if (frame.MessageType == LinkMessageType.Ping && LinkMessages.TryReadTimestamp(frame, out var sent))
             {
@@ -371,8 +375,11 @@ public class LinkSessionTests
         }
     }
 
-    /// <summary>Uma imagem e depois para sozinho (como o monitor virtual que saiu do desktop).</summary>
-    private sealed class OneFrameThenStopsFeed : IVideoFeed
+    /// <summary>
+    /// Uma imagem e depois para sozinho (como o monitor virtual que saiu do desktop) ou, com <c>failure</c>, falha
+    /// (como uma captura que quebrou).
+    /// </summary>
+    private sealed class OneFrameThenStopsFeed(Exception? failure = null) : IVideoFeed
     {
         private int _calls;
         public bool Disposed { get; private set; }
@@ -381,7 +388,7 @@ public class LinkSessionTests
         public Task<AccessUnit> NextAsync(CancellationToken ct) =>
             Interlocked.Increment(ref _calls) == 1
                 ? Task.FromResult(new AccessUnit([0, 0, 0, 1, 9, 0xF0, 0, 0, 0, 1, 0x65], true))
-                : Task.FromException<AccessUnit>(new OperationCanceledException("o monitor virtual saiu do desktop"));
+                : Task.FromException<AccessUnit>(failure ?? new OperationCanceledException("o monitor virtual saiu do desktop"));
 
         public ValueTask DisposeAsync()
         {
@@ -530,6 +537,182 @@ public class LinkSessionTests
         Assert.True(mode.IsConnected);
         Assert.DoesNotContain(LinkMessageType.VideoEnd, seen);
 
+        await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
+        Assert.Equal(LinkEndReason.Bye, await run);
+    }
+
+    [Fact]
+    public async Task VideoThatThrowsWhileOpeningTurnsTheSwitchOffAndKeepsTheSession()
+    {
+        var (pc, phone) = await Loopback.CreatePairAsync();
+        await using var _pc = pc;
+        await using var _phone = phone;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var mode = new MonitorMode();
+        mode.SessionStarted();
+        var run = LinkSession.RunAsync(pc, _ => { }, Fast, cts.Token, (_, _) => throw new InvalidOperationException("nenhuma compressão H.264 funcionou neste PC"), mode);
+
+        await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
+        var seen = new List<LinkMessageType>();
+        await AnswerUntilAsync(phone, new LinkFrameReader(phone), () => !mode.WantsVideo && seen.Count(t => t == LinkMessageType.Ping) >= 3, seen, cts.Token);
+        Assert.True(mode.IsConnected);
+        Assert.False(run.IsCompleted);
+        Assert.DoesNotContain(LinkMessageType.Config, seen);
+        Assert.DoesNotContain(LinkMessageType.VideoEnd, seen);
+
+        await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
+        Assert.Equal(LinkEndReason.Bye, await run);
+    }
+
+    /// <summary>Imagens a cada 20 ms, sem fim; o descarte demora <c>disposeDelay</c> e conta as chamadas.</summary>
+    private sealed class SlowToDisposeFeed(TimeSpan disposeDelay) : IVideoFeed
+    {
+        private int _disposals;
+        private int _disposed;
+        public int Disposals => Volatile.Read(ref _disposals);
+        public bool Disposed => Volatile.Read(ref _disposed) == 1;
+        public VideoConfig Config => new(2556, 1179, 60);
+        public VideoKind Kind => VideoKind.Extend;
+
+        public async Task<AccessUnit> NextAsync(CancellationToken ct)
+        {
+            await Task.Delay(20, ct);
+            return new AccessUnit([0, 0, 0, 1, 9, 0xF0, 0, 0, 0, 1, 0x65], true);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            Interlocked.Increment(ref _disposals);
+            await Task.Delay(disposeDelay); // como o FFmpeg que leva segundos para sair
+            Volatile.Write(ref _disposed, 1);
+        }
+    }
+
+    /// <summary>O iPhone desconecta depois do tempo-limite sem receber nada: nenhum intervalo entre mensagens pode chegar a ele.</summary>
+    private static void AssertNoSilenceLongerThanTimeout(List<long> arrivals)
+    {
+        var longest = arrivals.Zip(arrivals.Skip(1), (a, b) => b - a).DefaultIfEmpty(0).Max();
+        Assert.True(longest < Fast.Timeout.TotalMilliseconds, $"o iPhone ficou {longest} ms sem receber nada");
+    }
+
+    [Fact]
+    public async Task SwitchOffWhileVideoIsStillOpeningKeepsPingingAndDisposesTheLateFeedOnce()
+    {
+        var (pc, phone) = await Loopback.CreatePairAsync();
+        await using var _pc = pc;
+        await using var _phone = phone;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var mode = new MonitorMode();
+        mode.SessionStarted();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var feed = new SlowToDisposeFeed(TimeSpan.Zero);
+        var run = LinkSession.RunAsync(pc, _ => { }, Fast, cts.Token, async (_, _) =>
+        {
+            started.TrySetResult();
+            await Task.Delay(TimeSpan.FromSeconds(1)); // ignora o token, como a sondagem do FFmpeg que não para a tempo
+            return feed;
+        }, mode);
+
+        await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
+        var reader = new LinkFrameReader(phone);
+        var seen = new List<LinkMessageType>();
+        await AnswerUntilAsync(phone, reader, () => started.Task.IsCompleted && seen.Count(t => t == LinkMessageType.Ping) >= 2, seen, cts.Token);
+
+        Assert.Equal(ToggleResult.TurnedOff, mode.Toggle());
+        var afterOff = seen.Count;
+        var arrivals = new List<long> { Environment.TickCount64 };
+        await AnswerUntilAsync(phone, reader, () =>
+            seen.Contains(LinkMessageType.Bye) || (feed.Disposed && seen.Skip(afterOff).Count(t => t == LinkMessageType.Ping) >= 4), seen, cts.Token, arrivals);
+        Assert.DoesNotContain(LinkMessageType.Bye, seen);
+        Assert.False(run.IsCompleted);
+        AssertNoSilenceLongerThanTimeout(arrivals);
+        Assert.Equal(1, feed.Disposals);
+        Assert.DoesNotContain(LinkMessageType.Config, seen);
+        Assert.DoesNotContain(LinkMessageType.VideoEnd, seen);
+
+        await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
+        Assert.Equal(LinkEndReason.Bye, await run);
+        Assert.Equal(1, feed.Disposals);
+    }
+
+    [Fact]
+    public async Task SwitchOffWithAFeedThatIsSlowToDisposeKeepsPingingAndCanTurnOnAgainRightAway()
+    {
+        var (pc, phone) = await Loopback.CreatePairAsync();
+        await using var _pc = pc;
+        await using var _phone = phone;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var mode = new MonitorMode();
+        mode.SessionStarted();
+        var feeds = new ConcurrentQueue<SlowToDisposeFeed>();
+        var run = LinkSession.RunAsync(pc, _ => { }, Fast, cts.Token, (_, _) =>
+        {
+            var feed = new SlowToDisposeFeed(TimeSpan.FromSeconds(1));
+            feeds.Enqueue(feed);
+            return Task.FromResult<IVideoFeed?>(feed);
+        }, mode);
+
+        await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
+        var reader = new LinkFrameReader(phone);
+        var seen = new List<LinkMessageType>();
+        await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.Video), seen, cts.Token);
+        Assert.True(feeds.TryPeek(out var first));
+
+        Assert.Equal(ToggleResult.TurnedOff, mode.Toggle());
+        var afterOff = seen.Count;
+        var arrivals = new List<long> { Environment.TickCount64 };
+        await AnswerUntilAsync(phone, reader, () =>
+            seen.Contains(LinkMessageType.Bye)
+            || (first.Disposed && seen.Contains(LinkMessageType.VideoEnd) && seen.Skip(afterOff).Count(t => t == LinkMessageType.Ping) >= 4), seen, cts.Token, arrivals);
+        Assert.DoesNotContain(LinkMessageType.Bye, seen);
+        Assert.False(run.IsCompleted);
+        AssertNoSilenceLongerThanTimeout(arrivals);
+        Assert.Equal(1, first.Disposals);
+        var end = seen.IndexOf(LinkMessageType.VideoEnd);
+        Assert.DoesNotContain(LinkMessageType.Video, seen.Skip(end));
+
+        // Desligar e ligar logo em seguida: o feed novo não espera o descarte lento do anterior.
+        Assert.Equal(ToggleResult.TurnedOn, mode.Toggle());
+        Assert.Equal(ToggleResult.TurnedOff, mode.Toggle());
+        Assert.Equal(ToggleResult.TurnedOn, mode.Toggle());
+        var afterOn = seen.Count;
+        await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.Bye) || seen.Skip(afterOn).Contains(LinkMessageType.Video), seen, cts.Token);
+        Assert.DoesNotContain(LinkMessageType.Bye, seen);
+        Assert.Equal(LinkMessageType.Config, seen.Skip(afterOn).First(t => t != LinkMessageType.Ping));
+
+        await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
+        Assert.Equal(LinkEndReason.Bye, await run);
+        Assert.All(feeds, f => Assert.Equal(1, f.Disposals));
+        Assert.All(feeds, f => Assert.True(f.Disposed));
+    }
+
+    [Theory]
+    [InlineData(typeof(InvalidDataException))]
+    [InlineData(typeof(IOException))]
+    public async Task FeedThatFailsSendsVideoEndAndKeepsTheSession(Type failure)
+    {
+        var (pc, phone) = await Loopback.CreatePairAsync();
+        await using var _pc = pc;
+        await using var _phone = phone;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var mode = new MonitorMode();
+        mode.SessionStarted();
+        var feed = new OneFrameThenStopsFeed((Exception)Activator.CreateInstance(failure, "a captura quebrou")!);
+        var run = LinkSession.RunAsync(pc, _ => { }, Fast, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(feed), mode);
+
+        await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
+        var reader = new LinkFrameReader(phone);
+        var seen = new List<LinkMessageType>();
+        await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.VideoEnd) || seen.Contains(LinkMessageType.Bye), seen, cts.Token);
+        Assert.DoesNotContain(LinkMessageType.Bye, seen);
+        Assert.Contains(LinkMessageType.VideoEnd, seen);
+        Assert.False(mode.WantsVideo);
+        Assert.True(mode.IsConnected);
+
+        var afterEnd = seen.Count;
+        await AnswerUntilAsync(phone, reader, () => seen.Skip(afterEnd).Count(t => t == LinkMessageType.Ping) >= 3, seen, cts.Token);
+        Assert.False(run.IsCompleted);
+        Assert.True(feed.Disposed);
         await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
         Assert.Equal(LinkEndReason.Bye, await run);
     }

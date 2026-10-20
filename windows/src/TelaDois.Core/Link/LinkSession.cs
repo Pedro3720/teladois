@@ -23,11 +23,15 @@ public enum LinkEndReason
 /// Lado do PC: espera o HELLO, manda PING logo em seguida e a cada intervalo, mede o PONG e encerra no BYE,
 /// quando o iPhone fecha o socket ou após o tempo-limite sem receber nada (ou com uma escrita travada).
 /// O vídeo liga e desliga pelo <see cref="IVideoSwitch"/> (sem ele, fica ligado): ligar abre o feed em paralelo e
-/// manda CONFIG junto com a 1ª imagem; desligar — ou o feed parar sozinho, ou não abrir — descarta o feed e, se o
-/// iPhone tinha recebido CONFIG, manda VIDEO_END; a sessão continua. Ao sair, descarta o vídeo e manda BYE.
+/// manda CONFIG junto com a 1ª imagem; desligar — ou o feed parar sozinho, falhar ou não abrir — descarta o feed em
+/// segundo plano (os PINGs continuam) e, se o iPhone tinha recebido CONFIG, manda VIDEO_END; a sessão continua.
+/// Ao sair, descarta o vídeo e manda BYE.
 /// </summary>
 public static class LinkSession
 {
+    // Ao sair, quanto o BYE espera o descarte dos feeds (o FFmpeg tem até 3 s para sair).
+    private static readonly TimeSpan RetireLimit = TimeSpan.FromSeconds(5);
+
     public static async Task<LinkEndReason> RunAsync(
         Stream stream,
         Action<LinkStatus> onStatus,
@@ -48,6 +52,7 @@ public static class LinkSession
         Task<IVideoFeed?>? opening = null;
         IVideoFeed? feed = null;
         Task? sending = null;
+        var retiring = new List<Task>();
         var configSent = 0;
 
         // Toda escrita, inclusive a espera pela vez, tem tempo-limite: um iPhone que parou de ler encerra a sessão.
@@ -95,62 +100,100 @@ public static class LinkSession
             opening = Task.Run(() => openVideo(hello, token), CancellationToken.None);
         }
 
+        // Termina sem erro quando o feed acaba, falha ou é cancelado (o vídeo desliga e a sessão segue); só uma falha
+        // de escrita (IOException/TimeoutException) ou o fim da sessão saem como exceção.
         void StartSending(IVideoFeed activeFeed)
         {
             var token = videoCts!.Token;
+            async Task<AccessUnit?> NextOrEndAsync()
+            {
+                try
+                {
+                    return await activeFeed.NextAsync(token);
+                }
+                catch (Exception)
+                {
+                    return null; // quem captura registra o motivo
+                }
+            }
+
             sending = Task.Run(async () =>
             {
                 // CONFIG só com a 1ª imagem pronta (I1): uma captura que falha logo não deixa o iPhone preto.
-                var unit = await activeFeed.NextAsync(token);
+                var unit = await NextOrEndAsync();
+                if (unit is null || token.IsCancellationRequested)
+                {
+                    return;
+                }
                 await SendAsync(LinkMessages.Config(activeFeed.Config), cts.Token);
                 Interlocked.Exchange(ref configSent, 1);
                 Update(s => s with { Video = activeFeed.Config, Kind = activeFeed.Kind });
                 var started = Stopwatch.StartNew();
-                while (true)
+                while (unit is not null && !token.IsCancellationRequested)
                 {
                     // Escritas com o token da sessão: cancelar o vídeo no meio de uma escrita cortaria a mensagem.
                     await SendAsync(LinkMessages.Video(unit.IsKeyframe, (ulong)(started.Elapsed.Ticks / 10), unit.Data), cts.Token);
-                    unit = await activeFeed.NextAsync(token);
+                    unit = await NextOrEndAsync();
                 }
             }, CancellationToken.None);
         }
 
-        // Para a abertura, o envio e o feed, sem mandar nada. Engole qualquer falha deles.
-        async Task DisposeVideoAsync()
+        // Espera a abertura e descarta o feed (uma vez só) fora do laço: os dois podem levar segundos (sondagem do
+        // FFmpeg, processo saindo) e o laço não pode ficar sem mandar PING. Engole qualquer falha deles.
+        async Task RetireAsync(Task? stoppedSending, Task<IVideoFeed?>? stoppedOpening, IVideoFeed? stoppedFeed, CancellationTokenSource stoppedCts)
         {
-            videoCts?.Cancel();
-            await ObserveAsync(sending);
-            sending = null;
-            if (opening is not null)
+            await ObserveAsync(stoppedSending);
+            if (stoppedOpening is not null)
             {
                 try
                 {
-                    feed ??= await opening;
+                    stoppedFeed ??= await stoppedOpening;
                 }
                 catch (Exception)
                 {
                 }
-                opening = null;
             }
-            if (feed is not null)
+            if (stoppedFeed is not null)
             {
                 try
                 {
-                    await feed.DisposeAsync();
+                    await stoppedFeed.DisposeAsync();
                 }
                 catch (Exception)
                 {
                 }
-                feed = null;
             }
-            videoCts?.Dispose();
-            videoCts = null;
+            stoppedCts.Dispose();
         }
 
-        // Desliga o vídeo com a sessão viva: o iPhone só recebe VIDEO_END se chegou a receber CONFIG.
+        // Cancela o vídeo atual e entrega abertura, envio e feed para uma tarefa "aposentando"; não manda nada.
+        // Devolve a tarefa de envio parada (ou null), para quem chama esperar o fim das escritas dela.
+        Task? RetireVideo()
+        {
+            if (videoCts is null)
+            {
+                return null;
+            }
+            var stoppedSending = sending;
+            videoCts.Cancel();
+            retiring.RemoveAll(t => t.IsCompleted);
+            retiring.Add(RetireAsync(stoppedSending, opening, feed, videoCts));
+            videoCts = null;
+            opening = null;
+            feed = null;
+            sending = null;
+            return stoppedSending;
+        }
+
+        // Desliga o vídeo com a sessão viva, sem esperar a abertura nem o descarte do feed. Antes do VIDEO_END espera
+        // só o envio parar (limitado pelo tempo-limite): assim nenhum VIDEO sai depois dele. O iPhone só recebe
+        // VIDEO_END se chegou a receber CONFIG; uma falha de escrita do envio encerra a sessão.
         async Task StopVideoAsync()
         {
-            await DisposeVideoAsync();
+            if (RetireVideo() is { } stoppedSending)
+            {
+                await stoppedSending.WaitAsync(options.Timeout, cts.Token);
+            }
             if (Interlocked.Exchange(ref configSent, 0) == 1)
             {
                 Update(s => s with { Video = null, Kind = null });
@@ -237,19 +280,14 @@ public static class LinkSession
                 }
                 if (done == sending)
                 {
-                    try
-                    {
-                        await sending; // relança a falha de escrita (IOException → Closed, TimeoutException → Timeout)
-                    }
-                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-                    {
-                        // O feed parou sozinho (ex.: o monitor virtual saiu do desktop): vídeo desligado, a sessão segue.
-                        await StopVideoAsync();
-                        wantVideo = false;
-                        videoSwitch?.VideoEnded();
-                        continue;
-                    }
-                    return LinkEndReason.Closed;
+                    // Relança a falha de escrita (IOException → Closed, TimeoutException → Timeout).
+                    await sending;
+                    ct.ThrowIfCancellationRequested();
+                    // O feed parou sozinho (ex.: o monitor virtual saiu do desktop) ou falhou: vídeo desligado, a sessão segue.
+                    await StopVideoAsync();
+                    wantVideo = false;
+                    videoSwitch?.VideoEnded();
+                    continue;
                 }
                 if (done == opening)
                 {
@@ -269,8 +307,8 @@ public static class LinkSession
                     }
                     else
                     {
-                        // Sem Segunda Tela agora: o túnel continua e o atalho pode tentar de novo.
-                        await DisposeVideoAsync();
+                        // Sem Segunda Tela agora: o túnel continua e o atalho pode tentar de novo. Ainda não há envio.
+                        _ = RetireVideo();
                         wantVideo = false;
                         videoSwitch?.VideoEnded();
                     }
@@ -304,7 +342,10 @@ public static class LinkSession
             await ObserveAsync(receiving);
             try
             {
-                await DisposeVideoAsync();
+                // Inclui um feed que ainda termina de abrir: todo feed é descartado (uma vez só) antes do BYE.
+                // O envio parado é esperado pela própria tarefa que aposenta.
+                _ = RetireVideo();
+                await ObserveAsync(Task.WhenAll(retiring).WaitAsync(RetireLimit));
             }
             finally
             {
