@@ -25,6 +25,23 @@ public class VirtualDisplayTests
         return api;
     }
 
+    /// <summary>Outro adaptador com o nome dentro do dele (ex.: de outro driver virtual) não é o monitor do TelaDois.</summary>
+    [Fact]
+    public void AdapterNameMustMatchExactly()
+    {
+        var api = new FakeDisplayApi();
+        api.DeviceList.Add(new DisplayDeviceInfo(@"\\.\DISPLAY1", "Intel(R) UHD Graphics", true, true));
+        api.DeviceList.Add(new DisplayDeviceInfo(@"\\.\DISPLAY2", "Other Virtual Display Driver", true, false));
+        api.DeviceList.Add(new DisplayDeviceInfo(@"\\.\DISPLAY5", "virtual display driver", false, false));
+        api.ModeList[@"\\.\DISPLAY5"] = [new(2556, 1179, 60)];
+        var display = new VirtualDisplay(api, new NoPipe());
+
+        Assert.Equal(@"\\.\DISPLAY5", display.Find()); // ignora maiúsculas
+        Assert.Null(display.DetachLeftover()); // o DISPLAY2 está ligado, mas não é o do driver
+        display.Detach(@"\\.\DISPLAY2");
+        Assert.Empty(api.Applied);
+    }
+
     [Fact]
     public void FindsTheDriverMonitorByAdapterName() =>
         Assert.Equal(Virtual, new VirtualDisplay(TwoMonitorsAndDriver(), new NoPipe()).Find());

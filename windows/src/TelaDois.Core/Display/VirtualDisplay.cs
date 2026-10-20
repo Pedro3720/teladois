@@ -7,7 +7,7 @@ namespace TelaDois.Core.Display;
 /// </summary>
 public sealed class VirtualDisplay(IDisplayApi api, IDriverPipe pipe) : IVirtualMonitor
 {
-    /// <summary>Nome do adaptador no Windows (<c>DeviceName</c> do <c>MttVDD.inf</c>); conferido no driver real (Task 2).</summary>
+    /// <summary>Nome exato do adaptador no Windows (<c>DeviceName</c> do <c>MttVDD.inf</c>); conferido no driver real em 2026-10-20.</summary>
     public const string AdapterName = "Virtual Display Driver";
 
     public const int Fps = 60;
@@ -91,8 +91,10 @@ public sealed class VirtualDisplay(IDisplayApi api, IDriverPipe pipe) : IVirtual
 
     private static bool SameName(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
+    // Nome exato (medido no driver 25.7.23: "Virtual Display Driver"; os físicos aqui são "Intel(R) UHD Graphics"):
+    // um adaptador que só contém o nome, como o de outro driver virtual, nunca é tocado.
     private static bool IsVirtual(DisplayDeviceInfo device) =>
-        device.Description.Contains(AdapterName, StringComparison.OrdinalIgnoreCase);
+        string.Equals(device.Description, AdapterName, StringComparison.OrdinalIgnoreCase);
 
     private static void Check(int code, string action)
     {
