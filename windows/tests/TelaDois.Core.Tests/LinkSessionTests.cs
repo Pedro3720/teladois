@@ -651,17 +651,20 @@ public class LinkSessionTests
     }
 
     [Fact]
-    public async Task SwitchOffWithAFeedThatIsSlowToDisposeKeepsPingingAndCanTurnOnAgainRightAway()
+    public async Task SwitchOffWithAFeedThatIsSlowToDisposeKeepsPingingAndTurnsOnAgainAfterTheDisposal()
     {
         var (pc, phone) = await Loopback.CreatePairAsync();
         await using var _pc = pc;
         await using var _phone = phone;
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var mode = new MonitorMode();
         mode.SessionStarted();
         var feeds = new ConcurrentQueue<SlowToDisposeFeed>();
+        // Para cada abertura: os feeds anteriores já tinham terminado o descarte? (o monitor virtual é o mesmo nos dois)
+        var openedAfterDisposal = new ConcurrentQueue<bool>();
         var run = LinkSession.RunAsync(pc, _ => { }, Guarded, cts.Token, (_, _) =>
         {
+            openedAfterDisposal.Enqueue(feeds.All(f => f.Disposed));
             var feed = new SlowToDisposeFeed(TimeSpan.FromSeconds(2));
             feeds.Enqueue(feed);
             return Task.FromResult<IVideoFeed?>(feed);
@@ -686,19 +689,91 @@ public class LinkSessionTests
         var end = seen.IndexOf(LinkMessageType.VideoEnd);
         Assert.DoesNotContain(LinkMessageType.Video, seen.Skip(end));
 
-        // Desligar e ligar logo em seguida: o feed novo não espera o descarte lento do anterior.
-        Assert.Equal(ToggleResult.TurnedOn, mode.Toggle());
-        Assert.Equal(ToggleResult.TurnedOff, mode.Toggle());
+        // Ligar e, enquanto o 2º feed descarta devagar, desligar e religar: o feed novo só abre depois do descarte do
+        // anterior (o monitor virtual é o mesmo; o Detach atrasado tiraria o monitor do feed novo) e os PINGs não param.
         Assert.Equal(ToggleResult.TurnedOn, mode.Toggle());
         var afterOn = seen.Count;
         await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.Bye) || seen.Skip(afterOn).Contains(LinkMessageType.Video), seen, cts.Token);
+        Assert.Equal(2, feeds.Count);
+        Assert.Equal(ToggleResult.TurnedOff, mode.Toggle());
+        var afterSecondOff = seen.Count;
+        await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.Bye) || seen.Skip(afterSecondOff).Contains(LinkMessageType.VideoEnd), seen, cts.Token);
+        Assert.False(feeds.Last().Disposed); // o descarte do 2º leva 2 s: ainda em andamento
+        Assert.Equal(ToggleResult.TurnedOn, mode.Toggle());
+        var afterAgain = seen.Count;
+        arrivals = [Environment.TickCount64];
+        await AnswerUntilAsync(phone, reader, () =>
+            seen.Contains(LinkMessageType.Bye) || seen.Skip(afterAgain).Contains(LinkMessageType.Video), seen, cts.Token, arrivals);
         Assert.DoesNotContain(LinkMessageType.Bye, seen);
+        AssertNoSilenceLongerThanTimeout(arrivals, Guarded);
         Assert.Equal(LinkMessageType.Config, seen.Skip(afterOn).First(t => t != LinkMessageType.Ping));
+        Assert.Equal(3, feeds.Count);
+        Assert.All(openedAfterDisposal, Assert.True);
 
         await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
         Assert.Equal(LinkEndReason.Bye, await run);
         Assert.All(feeds, f => Assert.Equal(1, f.Disposals));
         Assert.All(feeds, f => Assert.True(f.Disposed));
+    }
+
+    [Fact]
+    public async Task TurningOnAgainWhileTheOldFeedDetachesKeepsTheSameVirtualMonitorOn()
+    {
+        var (pc, phone) = await Loopback.CreatePairAsync();
+        await using var _pc = pc;
+        await using var _phone = phone;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var mode = new MonitorMode();
+        mode.SessionStarted();
+        var monitor = new FakeVirtualMonitor();
+        var order = new ConcurrentQueue<string>();
+        var feeds = new ConcurrentQueue<IVideoFeed>();
+        // Os dois feeds usam o mesmo monitor virtual; o descarte do FFmpeg leva 1 s antes do Detach.
+        var run = LinkSession.RunAsync(pc, _ => { }, Guarded, cts.Token, (_, _) =>
+        {
+            monitor.Attach(2556, 1179);
+            order.Enqueue("attach");
+            var feed = new VirtualMonitorFeed(new SlowToDisposeFeed(TimeSpan.FromSeconds(1)), new OrderedMonitor(monitor, order), monitor.Device, _ => { }, TimeSpan.FromMilliseconds(50));
+            feeds.Enqueue(feed);
+            return Task.FromResult<IVideoFeed?>(feed);
+        }, mode);
+
+        await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
+        var reader = new LinkFrameReader(phone);
+        var seen = new List<LinkMessageType>();
+        await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.Video), seen, cts.Token);
+
+        Assert.Equal(ToggleResult.TurnedOff, mode.Toggle());
+        await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.Bye) || seen.Contains(LinkMessageType.VideoEnd), seen, cts.Token);
+        Assert.Equal(ToggleResult.TurnedOn, mode.Toggle()); // religa durante o descarte (1 s) do 1º feed
+        var afterOn = seen.Count;
+        await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.Bye) || seen.Skip(afterOn).Contains(LinkMessageType.Video), seen, cts.Token);
+        // Mais de 1 s de vídeo do 2º feed: um Detach atrasado do 1º já teria tirado o monitor (o watch confere a cada 50 ms).
+        var streaming = seen.Count;
+        await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.Bye) || seen.Skip(streaming).Count(t => t == LinkMessageType.Ping) >= 30, seen, cts.Token);
+        Assert.DoesNotContain(LinkMessageType.Bye, seen);
+        Assert.DoesNotContain(LinkMessageType.VideoEnd, seen.Skip(afterOn));
+        Assert.True(mode.WantsVideo);
+        Assert.True(monitor.Attached);
+        Assert.Equal(new[] { "attach", "detach", "attach" }, order.ToArray());
+
+        await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
+        Assert.Equal(LinkEndReason.Bye, await run);
+        Assert.False(monitor.Attached);
+    }
+
+    /// <summary>Anota cada Detach na ordem compartilhada com as aberturas.</summary>
+    private sealed class OrderedMonitor(FakeVirtualMonitor inner, ConcurrentQueue<string> order) : IVirtualMonitor
+    {
+        public Task<bool> IsInstalledAsync(CancellationToken ct) => inner.IsInstalledAsync(ct);
+        public (string DeviceName, DisplayModeInfo Mode) Attach(int width, int height) => inner.Attach(width, height);
+        public bool IsAttached(string deviceName) => inner.IsAttached(deviceName);
+
+        public void Detach(string deviceName)
+        {
+            order.Enqueue("detach");
+            inner.Detach(deviceName);
+        }
     }
 
     [Theory]

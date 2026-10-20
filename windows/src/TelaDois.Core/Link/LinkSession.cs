@@ -22,8 +22,8 @@ public enum LinkEndReason
 /// <summary>
 /// Lado do PC: espera o HELLO, manda PING logo em seguida e a cada intervalo, mede o PONG e encerra no BYE,
 /// quando o iPhone fecha o socket ou após o tempo-limite sem receber nada (ou com uma escrita travada).
-/// O vídeo liga e desliga pelo <see cref="IVideoSwitch"/> (sem ele, fica ligado): ligar abre o feed em paralelo e
-/// manda CONFIG junto com a 1ª imagem; desligar — ou o feed parar sozinho, falhar ou não abrir — descarta o feed em
+/// O vídeo liga e desliga pelo <see cref="IVideoSwitch"/> (sem ele, fica ligado): ligar abre o feed em paralelo (depois
+/// do descarte do feed anterior) e manda CONFIG junto com a 1ª imagem; desligar — ou o feed parar sozinho, falhar ou não abrir — descarta o feed em
 /// segundo plano (os PINGs continuam) e, se o iPhone tinha recebido CONFIG, manda VIDEO_END; a sessão continua.
 /// Ao sair, descarta o vídeo e manda BYE.
 /// </summary>
@@ -96,8 +96,20 @@ public static class LinkSession
             }
             videoCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
             var token = videoCts.Token;
+            // Uma operação por vez: o feed novo só abre depois do descarte dos anteriores, que usam o mesmo monitor
+            // virtual (um Detach atrasado tiraria o monitor do feed novo). A espera fica dentro da tarefa, fora do laço:
+            // os PINGs continuam. Um descarte travado não prende o ligar para sempre (limite do RetireLimit).
+            var previous = retiring.Where(t => !t.IsCompleted).ToArray();
             // Task.Run: uma abertura que trava ou lança sem await também fica numa tarefa observada.
-            opening = Task.Run(() => openVideo(hello, token), CancellationToken.None);
+            opening = Task.Run(async () =>
+            {
+                if (previous.Length > 0)
+                {
+                    await ObserveAsync(Task.WhenAll(previous).WaitAsync(RetireLimit, token));
+                    token.ThrowIfCancellationRequested();
+                }
+                return await openVideo(hello, token);
+            }, CancellationToken.None);
         }
 
         // Termina sem erro quando o feed acaba, falha ou é cancelado (o vídeo desliga e a sessão segue); só uma falha
