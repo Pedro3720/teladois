@@ -132,6 +132,35 @@ try {
         Add-Type -TypeDefinition $DeviceCode
         if ([TelaDoisVdd]::Install($HardwareId, $inf.FullName)) { Write-Host 'O Windows pediu reinício para terminar a instalação.' }
     }
+    # O Windows só deixa de listar o monitor com o dispositivo desativado (precisa de administrador).
+    # Duas tarefas sob demanda, como SYSTEM, que qualquer usuário do PC pode disparar: o TelaDois liga/desliga sem senha.
+    $device = Get-PnpDevice -Class Display -ErrorAction SilentlyContinue | Where-Object { $_.HardwareID -contains $HardwareId } | Select-Object -First 1
+    if (-not $device) { throw 'O dispositivo do monitor virtual não apareceu depois da instalação.' }
+    $instanceId = $device.InstanceId
+    $service = New-Object -ComObject 'Schedule.Service'
+    $service.Connect()
+    $root = $service.GetFolder('\')
+    try { $folder = $root.GetFolder('\TelaDois') } catch { $folder = $root.CreateFolder('TelaDois') }
+    foreach ($pair in @(@('Ligar monitor virtual', '/enable-device'), @('Desligar monitor virtual', '/disable-device'))) {
+        $definition = $service.NewTask(0)
+        $definition.RegistrationInfo.Description = 'TelaDois: liga/desliga o monitor virtual (Virtual Display Driver).'
+        $definition.Settings.ExecutionTimeLimit = 'PT1M'
+        $definition.Settings.MultipleInstances = 2   # TASK_INSTANCES_IGNORE_NEW
+        $definition.Settings.DisallowStartIfOnBatteries = $false
+        $definition.Settings.StopIfGoingOnBatteries = $false
+        $definition.Principal.UserId = 'SYSTEM'
+        $definition.Principal.LogonType = 5          # TASK_LOGON_SERVICE_ACCOUNT
+        $definition.Principal.RunLevel = 1           # TASK_RUNLEVEL_HIGHEST
+        $action = $definition.Actions.Create(0)      # TASK_ACTION_EXEC
+        $action.Path = "$env:SystemRoot\System32\pnputil.exe"
+        $action.Arguments = "$($pair[1]) `"$instanceId`""
+        # SYSTEM e administradores: tudo; Usuários (BU): ler e executar.
+        $sddl = 'D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;GRGX;;;BU)'
+        $folder.RegisterTaskDefinition($pair[0], $definition, 6, 'SYSTEM', $null, 5, $sddl) | Out-Null   # 6 = criar ou atualizar
+        Write-Host "Tarefa \TelaDois\$($pair[0]) pronta."
+    }
+    pnputil /disable-device "$instanceId" | Write-Host
+    Write-Host 'Monitor virtual desativado: o Windows só vai mostrá-lo quando o TelaDois ligar o modo monitor.'
     Write-Host 'Monitor virtual instalado. Abra (ou reabra) o TelaDois: ele tira o monitor do desktop até o iPhone conectar.'
 }
 finally {
