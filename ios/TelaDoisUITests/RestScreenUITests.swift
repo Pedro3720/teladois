@@ -152,4 +152,31 @@ final class RestScreenUITests: XCTestCase {
         XCTAssertFalse(element(app, "second-screen").exists)
         attachScreenshot("06-volta-descanso")
     }
+
+    func testVideoEndReturnsToClockButKeepsTheConnection() throws {
+        let app = launch()
+        guard let pc = FakePC.connect() else { return XCTFail("o app não aceitou conexão em 127.0.0.1:7100") }
+        XCTAssertNotNil(pc.readFrame().flatMap(LinkProtocol.parseHello))
+
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "bars-640x360", withExtension: "h264"))
+        let units = H264Parser.accessUnits(in: [UInt8](try Data(contentsOf: url)))
+        pc.send(LinkProtocol.config(width: 640, height: 360, fps: 30))
+        for (index, unit) in units.enumerated() {
+            pc.send(LinkProtocol.video(keyframe: index == 0, timestamp: UInt64(index) * 33_333, accessUnit: unit))
+        }
+        XCTAssertTrue(element(app, "second-screen").waitForExistence(timeout: 2), "deveria mostrar a Segunda Tela")
+
+        pc.send(LinkProtocol.videoEnd())
+        XCTAssertTrue(app.staticTexts["clock"].waitForExistence(timeout: 2), "VIDEO_END deveria voltar ao relógio")
+        XCTAssertFalse(element(app, "second-screen").exists)
+        XCTAssertTrue(element(app, "link-status").exists, "a conexão continua depois do VIDEO_END")
+
+        // Ainda conectado: o PING é respondido.
+        pc.send(LinkProtocol.ping(7))
+        var reply = pc.readFrame()
+        while let frame = reply, frame.messageType != .pong { reply = pc.readFrame() }
+        XCTAssertEqual(reply.flatMap(LinkProtocol.timestamp(of:)), 7)
+        attachScreenshot("07-fim-do-video")
+        pc.send(LinkProtocol.bye())
+    }
 }
