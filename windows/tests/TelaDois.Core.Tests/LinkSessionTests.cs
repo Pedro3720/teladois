@@ -470,9 +470,9 @@ public class LinkSessionTests
 
         Assert.Equal(ToggleResult.TurnedOff, mode.Toggle());
         await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.VideoEnd), seen, cts.Token);
-        Assert.True(Assert.Single(feeds).Disposed);
         var afterEnd = seen.Count;
-        await AnswerUntilAsync(phone, reader, () => seen.Skip(afterEnd).Count(t => t == LinkMessageType.Ping) >= 4, seen, cts.Token);
+        // O descarte do feed corre em paralelo ao VIDEO_END: espera com o prazo do teste (cts), sem afirmar na hora.
+        await AnswerUntilAsync(phone, reader, () => seen.Skip(afterEnd).Count(t => t == LinkMessageType.Ping) >= 4 && Assert.Single(feeds).Disposed, seen, cts.Token);
         Assert.DoesNotContain(LinkMessageType.Video, seen.Skip(afterEnd));
         Assert.False(run.IsCompleted);
         Assert.Null(statuses.Last().Video);
@@ -503,12 +503,12 @@ public class LinkSessionTests
         var reader = new LinkFrameReader(phone);
         var seen = new List<LinkMessageType>();
         await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.VideoEnd), seen, cts.Token);
-        Assert.True(feed.Disposed);
-        Assert.False(mode.WantsVideo);
-        Assert.True(mode.IsConnected);
 
+        // O laço do PC chama VideoEnded() depois de mandar o VIDEO_END, e o feed é descartado em paralelo: espera os
+        // dois (com o prazo do teste, cts) junto com os PINGs seguintes, em vez de afirmar logo depois do VIDEO_END.
         var afterEnd = seen.Count;
-        await AnswerUntilAsync(phone, reader, () => seen.Skip(afterEnd).Count(t => t == LinkMessageType.Ping) >= 3, seen, cts.Token);
+        await AnswerUntilAsync(phone, reader, () => seen.Skip(afterEnd).Count(t => t == LinkMessageType.Ping) >= 3 && feed.Disposed && !mode.WantsVideo, seen, cts.Token);
+        Assert.True(mode.IsConnected);
         Assert.False(run.IsCompleted);
         await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
         Assert.Equal(LinkEndReason.Bye, await run);
@@ -842,13 +842,12 @@ public class LinkSessionTests
         await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.VideoEnd) || seen.Contains(LinkMessageType.Bye), seen, cts.Token);
         Assert.DoesNotContain(LinkMessageType.Bye, seen);
         Assert.Contains(LinkMessageType.VideoEnd, seen);
-        Assert.False(mode.WantsVideo);
-        Assert.True(mode.IsConnected);
 
+        // Como no teste acima: VideoEnded() e o descarte vêm depois do VIDEO_END; espera-os com o prazo do teste (cts).
         var afterEnd = seen.Count;
-        await AnswerUntilAsync(phone, reader, () => seen.Skip(afterEnd).Count(t => t == LinkMessageType.Ping) >= 3, seen, cts.Token);
+        await AnswerUntilAsync(phone, reader, () => seen.Skip(afterEnd).Count(t => t == LinkMessageType.Ping) >= 3 && feed.Disposed && !mode.WantsVideo, seen, cts.Token);
+        Assert.True(mode.IsConnected);
         Assert.False(run.IsCompleted);
-        Assert.True(feed.Disposed);
         await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
         Assert.Equal(LinkEndReason.Bye, await run);
     }
