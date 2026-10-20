@@ -6,7 +6,7 @@ namespace TelaDois.Core.Video;
 /// <summary>
 /// Captura do monitor virtual (Estender). Confere a cada <c>checkInterval</c> se o monitor continua no desktop: se o
 /// usuário o desligou nas Configurações, <see cref="NextAsync"/> termina com <see cref="OperationCanceledException"/>
-/// (a sessão manda VIDEO_END). Descartar encerra a captura e tira o monitor do desktop.
+/// (a sessão manda VIDEO_END). Descartar encerra a captura, tira o monitor do desktop e desativa o dispositivo do driver.
 /// </summary>
 public sealed class VirtualMonitorFeed : IVideoFeed
 {
@@ -61,6 +61,28 @@ public sealed class VirtualMonitorFeed : IVideoFeed
         }
     }
 
+    /// <summary>
+    /// Desativa o dispositivo do driver (o Windows deixa de listar o monitor). Nunca lança: falhas, até o cancelamento,
+    /// só vão para o registro; não recebe o token da sessão porque também roda depois de cancelar.
+    /// </summary>
+    internal static async Task PowerOffQuietlyAsync(IVirtualMonitor monitor, Action<string> log)
+    {
+        try
+        {
+            await monitor.PowerOffAsync(CancellationToken.None);
+        }
+        catch (Exception e)
+        {
+            try
+            {
+                log($"não deu para desativar o monitor virtual: {e.Message}");
+            }
+            catch (Exception)
+            {
+            }
+        }
+    }
+
     /// <summary>Nunca lança: se a conferência falhar, registra e para de conferir (o vídeo segue).</summary>
     private async Task WatchAsync(TimeSpan interval)
     {
@@ -86,7 +108,10 @@ public sealed class VirtualMonitorFeed : IVideoFeed
         }
     }
 
-    /// <summary>Encerra a captura e, mesmo se isso falhar, tira o monitor do desktop (na dúvida, tenta tirar).</summary>
+    /// <summary>
+    /// Encerra a captura e, mesmo se isso falhar, tira o monitor do desktop (na dúvida, tenta tirar) e desativa o
+    /// dispositivo (sempre: o usuário pode ter tirado o monitor do desktop, mas ele continua listado).
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1)
@@ -115,6 +140,7 @@ public sealed class VirtualMonitorFeed : IVideoFeed
             {
                 DetachAndVerify(_monitor, _deviceName, _log);
             }
+            await PowerOffQuietlyAsync(_monitor, _log);
             _gone.Dispose();
         }
     }

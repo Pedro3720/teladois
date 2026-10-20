@@ -4,11 +4,15 @@ using TelaDois.Core.Display;
 namespace TelaDois.Core.Tests.Fakes;
 
 /// <summary>Monitor virtual de mentira: liga/desliga um booleano e anota cada desligamento.</summary>
+/// <remarks>Para "sem driver" use <see cref="Absent"/>: o <see cref="PowerOnAsync"/> real só dá certo com o monitor presente.</remarks>
 internal sealed class FakeVirtualMonitor : IVirtualMonitor
 {
     private int _attached;
 
     public bool Installed { get; set; } = true;
+
+    /// <summary>Sem o driver: o pipe não responde, as tarefas não existem e o monitor não aparece.</summary>
+    public static FakeVirtualMonitor Absent() => new() { Installed = false, PowersOn = false, CanPowerOff = false };
     public string Device { get; set; } = @"\\.\DISPLAY3";
     public DisplayModeInfo Mode { get; set; } = new(2556, 1179, 60);
     public Exception? AttachError { get; set; }
@@ -20,6 +24,12 @@ internal sealed class FakeVirtualMonitor : IVirtualMonitor
     public bool AttachTakes { get; set; } = true;
 
     public ConcurrentQueue<string> Detached { get; } = new();
+
+    /// <summary>Ordem das chamadas que mexem no monitor: "PowerOn", "Attach", "Detach", "PowerOff".</summary>
+    public ConcurrentQueue<string> Calls { get; } = new();
+
+    /// <summary>Se definido, <see cref="PowerOffAsync"/> lança esta exceção (o contrato diz que não lança: o chamador se protege mesmo assim).</summary>
+    public Exception? PowerOffError { get; set; }
 
     public bool Attached
     {
@@ -44,13 +54,15 @@ internal sealed class FakeVirtualMonitor : IVirtualMonitor
     public Task<bool> PowerOnAsync(CancellationToken ct)
     {
         Interlocked.Increment(ref _powerOns);
+        Calls.Enqueue("PowerOn");
         return Task.FromResult(PowersOn);
     }
 
     public Task PowerOffAsync(CancellationToken ct)
     {
         Interlocked.Increment(ref _powerOffs);
-        return Task.CompletedTask;
+        Calls.Enqueue("PowerOff");
+        return PowerOffError is { } error ? Task.FromException(error) : Task.CompletedTask;
     }
 
     public Task<bool> CanPowerOffAsync(CancellationToken ct) => Task.FromResult(CanPowerOff);
@@ -63,6 +75,7 @@ internal sealed class FakeVirtualMonitor : IVirtualMonitor
         {
             throw AttachError;
         }
+        Calls.Enqueue("Attach");
         Attached = AttachTakes;
         return (Device, Mode);
     }
@@ -74,6 +87,7 @@ internal sealed class FakeVirtualMonitor : IVirtualMonitor
             Attached = false;
         }
         Detached.Enqueue(deviceName);
+        Calls.Enqueue("Detach");
     }
 
     /// <summary>Se definido, <see cref="IsAttached"/> lança esta exceção (a API do Windows falhou).</summary>

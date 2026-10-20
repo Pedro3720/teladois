@@ -51,6 +51,34 @@ public class VirtualMonitorFeedTests
         await feed.DisposeAsync();
         Assert.True(capture.Disposed);
         Assert.Equal(new[] { monitor.Device }, monitor.Detached);
+        Assert.Equal(new[] { "Detach", "PowerOff" }, monitor.Calls);
+    }
+
+    [Fact]
+    public async Task DisposePowersOffEvenWhenTheMonitorAlreadyLeftTheDesktop()
+    {
+        // O usuário tirou o monitor nas Configurações: o dispositivo continua ativo e listado até desativar.
+        var monitor = new FakeVirtualMonitor { Attached = false };
+        var feed = new VirtualMonitorFeed(new WaitingFeed(), monitor, monitor.Device, _ => { });
+        await feed.DisposeAsync();
+        Assert.Empty(monitor.Detached);
+        Assert.Equal(1, monitor.PowerOffs);
+    }
+
+    [Fact]
+    public async Task DisposeFinishesAndLogsWhenPowerOffFails()
+    {
+        var monitor = new FakeVirtualMonitor { Attached = true, PowerOffError = new IOException("o Agendador de Tarefas não respondeu") };
+        var capture = new WaitingFeed();
+        var log = new ConcurrentQueue<string>();
+        var feed = new VirtualMonitorFeed(capture, monitor, monitor.Device, log.Enqueue);
+
+        await feed.DisposeAsync();
+        await feed.DisposeAsync();
+
+        Assert.True(capture.Disposed);
+        Assert.Equal(new[] { "Detach", "PowerOff" }, monitor.Calls);
+        Assert.Contains("não deu para desativar o monitor virtual: o Agendador de Tarefas não respondeu", log);
     }
 
     /// <summary>Captura cujo descarte falha (ex.: o processo não deixou ser encerrado).</summary>
@@ -91,7 +119,7 @@ public class VirtualMonitorFeedTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => feed.DisposeAsync().AsTask());
 
-        Assert.Equal(new[] { monitor.Device }, monitor.Detached);
+        Assert.Equal(new[] { "Detach", "PowerOff" }, monitor.Calls);
         Assert.False(monitor.Attached);
     }
 

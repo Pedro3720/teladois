@@ -21,16 +21,21 @@ public class VirtualDisplayLocalTests(ITestOutputHelper output)
             output.WriteLine($"PULADO: teste com o driver real só roda com {LocalDriverGate.Variable}=1 (ele liga e desliga um monitor de verdade).");
             return;
         }
-        var display = new VirtualDisplay(Win32DisplayApi.ForVirtualMonitor(), new DriverPipe()); // persist: true, como a bandeja
-        if (!await display.IsInstalledAsync(CancellationToken.None))
+        // Como a bandeja (Etapa 5c): o dispositivo fica desativado e só é ativado enquanto estende.
+        var display = new VirtualDisplay(Win32DisplayApi.ForVirtualMonitor(), new DriverPipe(),
+            new ScheduledTaskSwitch(new SystemProcessRunner(), output.WriteLine), output.WriteLine);
+        var canPowerOff = await display.CanPowerOffAsync(CancellationToken.None);
+        if (!await display.PowerOnAsync(CancellationToken.None))
         {
+            Assert.False(canPowerOff, "as tarefas existem, mas o monitor virtual não ativou");
             output.WriteLine("PULADO: o Virtual Display Driver não está instalado nesta máquina.");
             return;
         }
-        var device = display.Find();
-        Assert.NotNull(device); // o nome do adaptador confere com VirtualDisplay.AdapterName
+        string? device = null;
         try
         {
+            device = display.Find();
+            Assert.NotNull(device); // o nome do adaptador confere com VirtualDisplay.AdapterName
             var (name, mode) = display.Attach(2556, 1179);
             Assert.Equal(new DisplayModeInfo(2556, 1179, 60), mode);
             Assert.True(display.IsAttached(name));
@@ -61,8 +66,13 @@ public class VirtualDisplayLocalTests(ITestOutputHelper output)
             {
                 display.Detach(attached);
             }
+            await display.PowerOffAsync(CancellationToken.None);
         }
         Assert.False(display.IsAttached(device!));
+        if (canPowerOff)
+        {
+            Assert.Null(display.Find()); // desativado, o Windows deixa de listar o monitor
+        }
     }
 
     /// <summary>

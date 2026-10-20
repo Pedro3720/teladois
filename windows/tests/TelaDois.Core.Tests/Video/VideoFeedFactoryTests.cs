@@ -87,14 +87,106 @@ public class VideoFeedFactoryTests
         Assert.Equal(new VideoConfig(2556, 1178, 60), feed.Config);
         await feed.NextAsync(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
         Assert.Contains("ddagrab=output_idx=2:framerate=60:draw_mouse=1", runner.Started.Last(a => !a.Contains("-frames:v")));
+        Assert.Equal(new[] { "PowerOn", "Attach" }, monitor.Calls); // ativa o dispositivo antes de pôr no desktop
         await feed.DisposeAsync();
         Assert.Equal(new[] { Virtual.DeviceName }, monitor.Detached);
+        Assert.Equal(new[] { "PowerOn", "Attach", "Detach", "PowerOff" }, monitor.Calls);
+    }
+
+    [Fact]
+    public async Task DeviceThatDoesNotPowerOnWithTheTasksPresentMirrorsWithoutTheDriverWarning()
+    {
+        // As tarefas existem, mas o monitor não apareceu depois de ativar: o driver não está "ausente".
+        var monitor = new FakeVirtualMonitor { PowersOn = false, Installed = false };
+        var warned = 0;
+        var log = new ConcurrentQueue<string>();
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [Main, Side], () => null, log.Enqueue, monitor);
+        factory.DriverMissing += () => warned++;
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Mirror, feed!.Kind);
+        Assert.Contains("o monitor virtual não ativou: duplicando um monitor", log);
+        Assert.Equal(0, warned);
+        Assert.Equal(new[] { "PowerOn" }, monitor.Calls);
+    }
+
+    [Fact]
+    public async Task InstalledDriverWithoutTheTasksExtendsAndWarnsOnce()
+    {
+        // Instalação antiga: o monitor fica sempre listado e não há tarefas para escondê-lo.
+        var monitor = new FakeVirtualMonitor { CanPowerOff = false };
+        var missing = 0;
+        var driverMissing = 0;
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => monitor.Attached ? new[] { Main, Virtual } : new[] { Main }, () => null, _ => { }, monitor);
+        factory.DeviceSwitchMissing += () => missing++;
+        factory.DriverMissing += () => driverMissing++;
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Extend, feed!.Kind);
+        Assert.Equal(1, missing);
+        Assert.Equal(0, driverMissing);
+    }
+
+    [Fact]
+    public async Task TasksPresentDoNotWarnAboutTheSwitch()
+    {
+        var monitor = new FakeVirtualMonitor();
+        var missing = 0;
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => monitor.Attached ? new[] { Main, Virtual } : new[] { Main }, () => null, _ => { }, monitor);
+        factory.DeviceSwitchMissing += () => missing++;
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Extend, feed!.Kind);
+        Assert.Equal(0, missing);
+    }
+
+    [Fact]
+    public async Task CancellationAfterAttachDetachesAndPowersOffOnce()
+    {
+        var monitor = new FakeVirtualMonitor();
+        using var cts = new CancellationTokenSource();
+        // A saída nunca aparece na DXGI; o cancelamento chega durante a espera.
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () =>
+        {
+            if (monitor.Attached)
+            {
+                cts.Cancel();
+            }
+            return new[] { Main, Side };
+        }, () => null, _ => { }, monitor)
+        {
+            OutputWait = TimeSpan.FromSeconds(30),
+        };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => factory.OpenAsync(Hello, cts.Token));
+
+        Assert.Equal(new[] { "PowerOn", "Attach", "Detach", "PowerOff" }, monitor.Calls);
+    }
+
+    [Fact]
+    public async Task PowerOffFailureAfterAFailedExtendIsLoggedAndMirrors()
+    {
+        var monitor = new FakeVirtualMonitor { PowerOffError = new IOException("o Agendador de Tarefas não respondeu") };
+        var log = new ConcurrentQueue<string>();
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [Main, Side], () => null, log.Enqueue, monitor)
+        {
+            OutputWait = TimeSpan.FromMilliseconds(200),
+        };
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Mirror, feed!.Kind);
+        Assert.Contains("não deu para desativar o monitor virtual: o Agendador de Tarefas não respondeu", log);
+        Assert.Equal(1, monitor.PowerOffs);
     }
 
     [Fact]
     public async Task WithoutTheDriverMirrorsAndWarns()
     {
-        var monitor = new FakeVirtualMonitor { Installed = false };
+        var monitor = FakeVirtualMonitor.Absent();
         var warned = 0;
         var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [Main, Side], () => null, _ => { }, monitor);
         factory.DriverMissing += () => warned++;
@@ -105,6 +197,8 @@ public class VideoFeedFactoryTests
         Assert.Equal(new VideoConfig(1366, 768, 60), feed.Config);
         Assert.Equal(1, warned);
         Assert.Empty(monitor.Detached);
+        Assert.Equal(1, monitor.PowerOns);
+        Assert.Equal(0, monitor.PowerOffs);
     }
 
     [Fact]
@@ -118,6 +212,7 @@ public class VideoFeedFactoryTests
 
         Assert.Equal(VideoKind.Mirror, feed!.Kind);
         Assert.Contains(log, line => line.StartsWith("não deu para ligar o monitor virtual", StringComparison.Ordinal));
+        Assert.Equal(new[] { "PowerOn", "PowerOff" }, monitor.Calls);
     }
 
     [Fact]
@@ -133,7 +228,7 @@ public class VideoFeedFactoryTests
         await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
 
         Assert.Equal(VideoKind.Mirror, feed!.Kind);
-        Assert.Equal(new[] { monitor.Device }, monitor.Detached);
+        Assert.Equal(new[] { "PowerOn", "Attach", "Detach", "PowerOff" }, monitor.Calls);
         Assert.Contains(log, line => line.Contains("fora do adaptador 0", StringComparison.Ordinal));
     }
 
@@ -141,7 +236,8 @@ public class VideoFeedFactoryTests
     public async Task MirrorNeverPicksTheVirtualMonitorThatIsStillOn()
     {
         // O driver não respondeu ao PING, mas o monitor dele continua no desktop (ex.: o Detach anterior falhou).
-        var monitor = new FakeVirtualMonitor { Installed = false, Attached = true };
+        var monitor = FakeVirtualMonitor.Absent();
+        monitor.Attached = true;
         var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [Main, Virtual, Side], () => null, _ => { }, monitor);
 
         await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
@@ -224,7 +320,7 @@ public class VideoFeedFactoryTests
             () => monitor.Attached ? new[] { Main, Virtual } : new[] { Main }, () => null, _ => { }, monitor);
 
         Assert.Null(await factory.OpenAsync(Hello, CancellationToken.None));
-        Assert.Equal(new[] { monitor.Device }, monitor.Detached);
+        Assert.Equal(new[] { "PowerOn", "Attach", "Detach", "PowerOff" }, monitor.Calls);
     }
 
     /// <summary>Sondagens iniciadas até agora (a captura pode estar iniciando o FFmpeg ao mesmo tempo: lê sob a trava).</summary>
@@ -240,7 +336,7 @@ public class VideoFeedFactoryTests
     private static (FakeProcessRunner Runner, VideoFeedFactory Factory, ConcurrentQueue<string> Log) HangingCapture(bool extend)
     {
         var runner = new FakeProcessRunner(args => args.Contains("-frames:v") ? new FakeProcess(args.Contains("h264_mf") ? 0 : 1) : new FakeProcess(0, hangs: true, stream: new BlockingStream()));
-        var monitor = new FakeVirtualMonitor { Installed = extend };
+        var monitor = extend ? new FakeVirtualMonitor() : FakeVirtualMonitor.Absent();
         var log = new ConcurrentQueue<string>();
         var factory = new VideoFeedFactory("ffmpeg", runner, () => monitor.Attached ? new[] { Main, Virtual } : new[] { Main, Side }, () => null, log.Enqueue, monitor);
         return (runner, factory, log);
@@ -253,7 +349,7 @@ public class VideoFeedFactoryTests
     {
         // Sondagem: só o h264_mf funciona; captura: o FFmpeg sai sem imagem (a linha real falha nesta saída).
         var runner = new FakeProcessRunner(args => args.Contains("-frames:v") ? new FakeProcess(args.Contains("h264_mf") ? 0 : 1) : new FakeProcess(1));
-        var monitor = new FakeVirtualMonitor { Installed = extend };
+        var monitor = extend ? new FakeVirtualMonitor() : FakeVirtualMonitor.Absent();
         var log = new ConcurrentQueue<string>();
         var factory = new VideoFeedFactory("ffmpeg", runner, () => monitor.Attached ? new[] { Main, Virtual } : new[] { Main, Side }, () => null, log.Enqueue, monitor);
         int Probes() => ProbeCount(runner);
