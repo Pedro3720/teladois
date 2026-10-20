@@ -3,16 +3,87 @@ namespace TelaDois.Core.Display;
 /// <summary>
 /// O monitor do Virtual Display Driver. O driver mantém 1 monitor sempre instalado (<c>SETDISPLAYCOUNT 0</c> vira 1);
 /// ligar é pô-lo no desktop em Estender, à direita do monitor mais à direita; desligar é tirá-lo (tamanho 0), e o
-/// Windows devolve as janelas aos outros monitores.
+/// Windows devolve as janelas aos outros monitores. Com <paramref name="device"/> (Etapa 5c), o dispositivo do driver
+/// também é ativado antes de ligar (<see cref="PowerOnAsync"/>) e desativado depois de desligar
+/// (<see cref="PowerOffAsync"/>): desativado, o Windows deixa de listar o monitor.
 /// </summary>
-public sealed class VirtualDisplay(IDisplayApi api, IDriverPipe pipe) : IVirtualMonitor
+public sealed class VirtualDisplay(IDisplayApi api, IDriverPipe pipe, IDeviceSwitch? device = null, Action<string>? log = null) : IVirtualMonitor
 {
     /// <summary>Nome exato do adaptador no Windows (<c>DeviceName</c> do <c>MttVDD.inf</c>); conferido no driver real em 2026-10-20.</summary>
     public const string AdapterName = "Virtual Display Driver";
 
     public const int Fps = 60;
 
+    /// <summary>Prazo para o monitor aparecer depois de ativar o dispositivo.</summary>
+    public TimeSpan PowerOnWait { get; init; } = TimeSpan.FromSeconds(8);
+
+    /// <summary>Prazo para o monitor sumir depois de desativar o dispositivo.</summary>
+    public TimeSpan PowerOffWait { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Intervalo entre as consultas ao Windows durante as esperas.</summary>
+    public TimeSpan PollInterval { get; init; } = TimeSpan.FromMilliseconds(100);
+
     public Task<bool> IsInstalledAsync(CancellationToken ct) => pipe.PingAsync(ct);
+
+    /// <summary>
+    /// Garante o monitor do driver presente no Windows: já presente → <c>true</c> na hora; senão ativa o dispositivo pela
+    /// tarefa e espera até <see cref="PowerOnWait"/>. <c>false</c> sem as tarefas, com a tarefa recusada ou se o monitor não
+    /// apareceu. Não mexe em nenhum monitor (pôr no desktop é o <see cref="Attach"/>). Só lança o cancelamento de <paramref name="ct"/>.
+    /// </summary>
+    public async Task<bool> PowerOnAsync(CancellationToken ct)
+    {
+        if (TryFind() is not null)
+        {
+            return true;
+        }
+        if (!await IsDeviceSwitchAvailableAsync(ct))
+        {
+            Log(@"monitor virtual ausente e sem as tarefas do Windows que o ativam (instale com tools\vdd\instalar-vdd.ps1)");
+            return false;
+        }
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        if (!await RunDeviceSwitchAsync(true, ct))
+        {
+            Log("monitor virtual não ativou: a tarefa do Windows não rodou");
+            return false;
+        }
+        if (await WaitUntilAsync(() => TryFind() is not null, PowerOnWait, ct))
+        {
+            Log($"monitor virtual ativado em {watch.ElapsedMilliseconds} ms");
+            return true;
+        }
+        Log($"monitor virtual não apareceu em {Seconds(PowerOnWait)} depois de ativar o dispositivo");
+        return false;
+    }
+
+    /// <summary>
+    /// Desativa o dispositivo do driver (só com as tarefas) e espera o monitor sumir até <see cref="PowerOffWait"/>.
+    /// Sem as tarefas, não faz nada. Só lança o cancelamento de <paramref name="ct"/>.
+    /// </summary>
+    public async Task PowerOffAsync(CancellationToken ct)
+    {
+        if (!await IsDeviceSwitchAvailableAsync(ct))
+        {
+            return;
+        }
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        if (!await RunDeviceSwitchAsync(false, ct))
+        {
+            Log("monitor virtual não desativou: a tarefa do Windows não rodou");
+            return;
+        }
+        if (await WaitUntilAsync(() => TryFind() is null, PowerOffWait, ct))
+        {
+            Log($"monitor virtual desativado em {watch.ElapsedMilliseconds} ms");
+        }
+        else
+        {
+            Log($"monitor virtual não desativou em {Seconds(PowerOffWait)}");
+        }
+    }
+
+    /// <summary>As tarefas que ativam/desativam o dispositivo existem.</summary>
+    public Task<bool> CanPowerOffAsync(CancellationToken ct) => IsDeviceSwitchAvailableAsync(ct);
 
     /// <summary><c>\\.\DISPLAYn</c> do monitor do driver, ligado ou não; <c>null</c> sem o driver.</summary>
     public string? Find() => api.Devices().FirstOrDefault(IsVirtual)?.DeviceName;
@@ -88,6 +159,86 @@ public sealed class VirtualDisplay(IDisplayApi api, IDriverPipe pipe) : IVirtual
 
     private DisplayDeviceInfo? FindDriverDevice(string deviceName) =>
         api.Devices().FirstOrDefault(d => SameName(d.DeviceName, deviceName) && IsVirtual(d));
+
+    // Find() que nunca lança: uma falha da API do Windows conta como "monitor não listado".
+    private string? TryFind()
+    {
+        try
+        {
+            return Find();
+        }
+        catch (Exception ex)
+        {
+            Log($"não deu para listar os monitores: {ex.Message}");
+            return null;
+        }
+    }
+
+    private async Task<bool> IsDeviceSwitchAvailableAsync(CancellationToken ct)
+    {
+        if (device is null)
+        {
+            return false;
+        }
+        try
+        {
+            return await device.IsAvailableAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Log($"não deu para consultar as tarefas do monitor virtual: {ex.Message}");
+            return false;
+        }
+    }
+
+    private async Task<bool> RunDeviceSwitchAsync(bool enable, CancellationToken ct)
+    {
+        try
+        {
+            return device is not null && await device.RunAsync(enable, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Log($"a tarefa do monitor virtual falhou: {ex.Message}");
+            return false;
+        }
+    }
+
+    private async Task<bool> WaitUntilAsync(Func<bool> condition, TimeSpan limit, CancellationToken ct)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (!condition())
+        {
+            var remaining = limit - watch.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+            {
+                return false;
+            }
+            await Task.Delay(remaining < PollInterval ? remaining : PollInterval, ct);
+        }
+        return true;
+    }
+
+    private static string Seconds(TimeSpan time) => $"{time.TotalSeconds:0.#} s";
+
+    private void Log(string line)
+    {
+        try
+        {
+            log?.Invoke(line);
+        }
+        catch (Exception)
+        {
+        }
+    }
 
     private static bool SameName(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 

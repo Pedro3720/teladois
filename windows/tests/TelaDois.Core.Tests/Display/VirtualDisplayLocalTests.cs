@@ -64,4 +64,43 @@ public class VirtualDisplayLocalTests(ITestOutputHelper output)
         }
         Assert.False(display.IsAttached(device!));
     }
+
+    /// <summary>
+    /// Desativa e ativa o dispositivo do driver pelas tarefas do Windows (criadas pelo instalador) e mede os tempos; termina
+    /// com o dispositivo desativado, como o instalador o deixa.
+    /// </summary>
+    [Fact]
+    public async Task RealDriverDevicePowersOffAndOnThroughTheScheduledTasks()
+    {
+        if (!LocalDriverGate.IsEnabled())
+        {
+            output.WriteLine($"PULADO: teste com o driver real só roda com {LocalDriverGate.Variable}=1 (ele desativa e ativa o dispositivo de verdade).");
+            return;
+        }
+        var tasks = new ScheduledTaskSwitch(new SystemProcessRunner(), output.WriteLine);
+        if (!await tasks.IsAvailableAsync(CancellationToken.None))
+        {
+            output.WriteLine(@"PULADO: as tarefas \TelaDois\ não existem nesta máquina (rode o tools\vdd\instalar-vdd.ps1 como administrador).");
+            return;
+        }
+        var display = new VirtualDisplay(Win32DisplayApi.ForVirtualMonitor(), new DriverPipe(), tasks, output.WriteLine);
+        Assert.True(await display.CanPowerOffAsync(CancellationToken.None));
+        try
+        {
+            await display.PowerOffAsync(CancellationToken.None);
+            Assert.Null(display.Find());
+
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            Assert.True(await display.PowerOnAsync(CancellationToken.None));
+            output.WriteLine($"ligar: {watch.ElapsedMilliseconds} ms até o monitor aparecer ({display.Find()})");
+            Assert.NotNull(display.Find());
+        }
+        finally
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            await display.PowerOffAsync(CancellationToken.None);
+            output.WriteLine($"desligar: {watch.ElapsedMilliseconds} ms até o monitor sumir");
+        }
+        Assert.Null(display.Find());
+    }
 }

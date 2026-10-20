@@ -811,6 +811,9 @@ public class LinkSessionTests
     private sealed class OrderedMonitor(FakeVirtualMonitor inner, ConcurrentQueue<string> order) : IVirtualMonitor
     {
         public Task<bool> IsInstalledAsync(CancellationToken ct) => inner.IsInstalledAsync(ct);
+        public Task<bool> PowerOnAsync(CancellationToken ct) => inner.PowerOnAsync(ct);
+        public Task PowerOffAsync(CancellationToken ct) => inner.PowerOffAsync(ct);
+        public Task<bool> CanPowerOffAsync(CancellationToken ct) => inner.CanPowerOffAsync(ct);
         public string? Find() => inner.Find();
         public (string DeviceName, DisplayModeInfo Mode) Attach(int width, int height) => inner.Attach(width, height);
         public bool IsAttached(string deviceName) => inner.IsAttached(deviceName);

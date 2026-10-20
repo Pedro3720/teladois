@@ -29,6 +29,32 @@ internal sealed class FakeVirtualMonitor : IVirtualMonitor
 
     public Task<bool> IsInstalledAsync(CancellationToken ct) => Task.FromResult(Installed);
 
+    private int _powerOns;
+    private int _powerOffs;
+
+    /// <summary>Resposta do <see cref="PowerOnAsync"/> (o monitor apareceu).</summary>
+    public bool PowersOn { get; set; } = true;
+
+    /// <summary>Resposta do <see cref="CanPowerOffAsync"/> (as tarefas do Windows existem).</summary>
+    public bool CanPowerOff { get; set; } = true;
+
+    public int PowerOns => Volatile.Read(ref _powerOns);
+    public int PowerOffs => Volatile.Read(ref _powerOffs);
+
+    public Task<bool> PowerOnAsync(CancellationToken ct)
+    {
+        Interlocked.Increment(ref _powerOns);
+        return Task.FromResult(PowersOn);
+    }
+
+    public Task PowerOffAsync(CancellationToken ct)
+    {
+        Interlocked.Increment(ref _powerOffs);
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> CanPowerOffAsync(CancellationToken ct) => Task.FromResult(CanPowerOff);
+
     public string? Find() => Device;
 
     public (string DeviceName, DisplayModeInfo Mode) Attach(int width, int height)

@@ -180,4 +180,189 @@ public class VirtualDisplayTests
     /// <summary>Medido no driver 25.7.23: sem gravar no registro, ligar falha com DISP_CHANGE_FAILED (-1).</summary>
     [Fact]
     public void TheVirtualMonitorApiWritesTheRegistry() => Assert.True(Win32DisplayApi.ForVirtualMonitor().Persist);
+
+    // ---- Ligar/desligar o dispositivo do driver (Etapa 5c) ----
+
+    private static readonly DisplayDeviceInfo DriverDevice = new(Virtual, "Virtual Display Driver", false, false);
+
+    /// <summary>Só os dois monitores físicos: o dispositivo do driver está desativado e o Windows não o lista.</summary>
+    private static FakeDisplayApi TwoMonitorsDriverDisabled()
+    {
+        var api = TwoMonitorsAndDriver();
+        api.DeviceList.RemoveAll(d => d.DeviceName == Virtual);
+        return api;
+    }
+
+    /// <summary>Depois de <paramref name="delayMs"/>, o Windows passa a listar (ou deixa de listar) o monitor do driver.</summary>
+    private static void ChangeDriverPresenceLater(FakeDisplayApi api, bool present, int delayMs) =>
+        _ = Task.Delay(delayMs).ContinueWith(_ =>
+        {
+            lock (api.DeviceList)
+            {
+                api.DeviceList.RemoveAll(d => d.DeviceName == Virtual);
+                if (present)
+                {
+                    api.DeviceList.Add(DriverDevice);
+                }
+            }
+        }, TaskScheduler.Default);
+
+    private static (VirtualDisplay Display, List<string> Log) Create(FakeDisplayApi api, IDeviceSwitch? device,
+        TimeSpan? powerOnWait = null, TimeSpan? powerOffWait = null)
+    {
+        var log = new List<string>();
+        var display = new VirtualDisplay(api, new NoPipe(), device, line => { lock (log) { log.Add(line); } })
+        {
+            PowerOnWait = powerOnWait ?? TimeSpan.FromSeconds(8),
+            PowerOffWait = powerOffWait ?? TimeSpan.FromSeconds(5),
+            PollInterval = TimeSpan.FromMilliseconds(20),
+        };
+        return (display, log);
+    }
+
+    [Fact]
+    public void PowerWaitsMatchTheSpec()
+    {
+        var display = new VirtualDisplay(new FakeDisplayApi(), new NoPipe());
+        Assert.Equal(TimeSpan.FromSeconds(8), display.PowerOnWait);
+        Assert.Equal(TimeSpan.FromSeconds(5), display.PowerOffWait);
+        Assert.Equal(TimeSpan.FromMilliseconds(100), display.PollInterval);
+    }
+
+    [Fact]
+    public async Task PowerOnWithTheMonitorAlreadyPresentDoesNotRunTheTask()
+    {
+        var api = TwoMonitorsAndDriver();
+        var device = new FakeDeviceSwitch();
+        var (display, _) = Create(api, device);
+
+        Assert.True(await display.PowerOnAsync(CancellationToken.None));
+
+        Assert.Empty(device.Runs);
+        Assert.Empty(api.Applied);
+    }
+
+    [Fact]
+    public async Task PowerOnRunsTheTaskAndWaitsForTheMonitor()
+    {
+        var api = TwoMonitorsDriverDisabled();
+        var device = new FakeDeviceSwitch { OnRun = enable => ChangeDriverPresenceLater(api, enable, 300) };
+        var (display, log) = Create(api, device);
+
+        Assert.True(await display.PowerOnAsync(CancellationToken.None));
+
+        Assert.Equal(new[] { true }, device.Runs.ToArray());
+        Assert.Equal(Virtual, display.Find());
+        Assert.Contains(log, l => l.Contains("monitor virtual ativado em") && l.Contains("ms"));
+        Assert.Empty(api.Applied); // ligar o dispositivo não mexe em nenhum monitor
+    }
+
+    [Fact]
+    public async Task PowerOnGivesUpWhenTheMonitorNeverAppears()
+    {
+        var api = TwoMonitorsDriverDisabled();
+        var device = new FakeDeviceSwitch();
+        var (display, log) = Create(api, device, powerOnWait: TimeSpan.FromMilliseconds(500));
+
+        Assert.False(await display.PowerOnAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)));
+
+        Assert.Equal(new[] { true }, device.Runs.ToArray());
+        Assert.Contains(log, l => l.Contains("não apareceu"));
+        Assert.Empty(api.Applied);
+    }
+
+    [Fact]
+    public async Task PowerOnWhenTheTaskIsRefusedIsFalseWithoutWaiting()
+    {
+        var api = TwoMonitorsDriverDisabled();
+        var device = new FakeDeviceSwitch { Accepts = false };
+        var (display, _) = Create(api, device); // espera de 8 s: recusar não pode esperar
+
+        Assert.False(await display.PowerOnAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(new[] { true }, device.Runs.ToArray());
+    }
+
+    [Fact]
+    public async Task PowerOnWithoutTheSwitchAndWithoutTheMonitorIsFalse()
+    {
+        var api = TwoMonitorsDriverDisabled();
+        var (display, log) = Create(api, device: null);
+
+        Assert.False(await display.PowerOnAsync(CancellationToken.None));
+        Assert.NotEmpty(log);
+        Assert.Empty(api.Applied);
+    }
+
+    [Fact]
+    public async Task PowerOnWithTheTasksMissingIsFalseWithoutRunning()
+    {
+        var api = TwoMonitorsDriverDisabled();
+        var device = new FakeDeviceSwitch { Available = false };
+        var (display, _) = Create(api, device);
+
+        Assert.False(await display.PowerOnAsync(CancellationToken.None));
+        Assert.Empty(device.Runs);
+    }
+
+    [Fact]
+    public async Task PowerOffRunsTheTaskAndWaitsForTheMonitorToGo()
+    {
+        var api = TwoMonitorsAndDriver();
+        var device = new FakeDeviceSwitch { OnRun = enable => ChangeDriverPresenceLater(api, enable, 300) };
+        var (display, log) = Create(api, device);
+
+        await display.PowerOffAsync(CancellationToken.None);
+
+        Assert.Equal(new[] { false }, device.Runs.ToArray());
+        Assert.Null(display.Find());
+        Assert.Contains(log, l => l.Contains("monitor virtual desativado em"));
+        Assert.Empty(api.Applied); // desligar o dispositivo nunca mexe num monitor físico
+    }
+
+    [Fact]
+    public async Task PowerOffThatDoesNotTakeLogsAndReturns()
+    {
+        var api = TwoMonitorsAndDriver();
+        var device = new FakeDeviceSwitch();
+        var (display, log) = Create(api, device, powerOffWait: TimeSpan.FromMilliseconds(300));
+
+        await display.PowerOffAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(new[] { false }, device.Runs.ToArray());
+        Assert.Contains(log, l => l.Contains("não desativou"));
+    }
+
+    [Fact]
+    public async Task PowerOffWithTheTasksMissingRunsNothing()
+    {
+        var api = TwoMonitorsAndDriver();
+        var device = new FakeDeviceSwitch { Available = false };
+        var (display, _) = Create(api, device);
+
+        await display.PowerOffAsync(CancellationToken.None);
+        await Create(api, device: null).Display.PowerOffAsync(CancellationToken.None);
+
+        Assert.Empty(device.Runs);
+        Assert.Equal(Virtual, display.Find());
+        Assert.Empty(api.Applied);
+    }
+
+    [Fact]
+    public async Task CanPowerOffOnlyWithTheTasks()
+    {
+        var api = TwoMonitorsAndDriver();
+        Assert.True(await Create(api, new FakeDeviceSwitch()).Display.CanPowerOffAsync(CancellationToken.None));
+        Assert.False(await Create(api, new FakeDeviceSwitch { Available = false }).Display.CanPowerOffAsync(CancellationToken.None));
+        Assert.False(await Create(api, device: null).Display.CanPowerOffAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task PowerOnHonoursTheCallerCancellation()
+    {
+        var api = TwoMonitorsDriverDisabled();
+        var (display, _) = Create(api, new FakeDeviceSwitch());
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => display.PowerOnAsync(cts.Token));
+    }
 }

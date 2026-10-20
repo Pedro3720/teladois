@@ -5,6 +5,18 @@ public interface IVirtualMonitor
 {
     Task<bool> IsInstalledAsync(CancellationToken ct);
 
+    /// <summary>
+    /// Ativa o dispositivo do driver se o Windows não lista o monitor e espera ele aparecer; <c>true</c> quando o monitor
+    /// está presente (<see cref="Find"/> não nulo) ao fim. Só lança o cancelamento de <paramref name="ct"/>.
+    /// </summary>
+    Task<bool> PowerOnAsync(CancellationToken ct);
+
+    /// <summary>Desativa o dispositivo do driver (só se as tarefas existem) e espera o monitor sumir. Só lança o cancelamento.</summary>
+    Task PowerOffAsync(CancellationToken ct);
+
+    /// <summary>As tarefas que ativam/desativam o dispositivo existem.</summary>
+    Task<bool> CanPowerOffAsync(CancellationToken ct);
+
     /// <summary><c>\\.\DISPLAYn</c> do monitor virtual, ligado ou não; <c>null</c> sem ele (Duplicar nunca o escolhe).</summary>
     string? Find();
 
