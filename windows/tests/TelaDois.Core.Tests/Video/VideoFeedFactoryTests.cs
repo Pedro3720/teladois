@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
+using TelaDois.Core.Display;
 using TelaDois.Core.Link;
 using TelaDois.Core.Tests.Fakes;
 using TelaDois.Core.Video;
@@ -63,5 +64,116 @@ public class VideoFeedFactoryTests
     {
         var factory = new VideoFeedFactory("ffmpeg", new FakeProcessRunner(_ => new FakeProcess(0)), () => [Main], () => null, _ => { });
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => factory.OpenAsync(Hello, new CancellationToken(true)));
+    }
+
+    private static readonly DisplayOutput Virtual = new(2, @"\\.\DISPLAY3", 2556, 1179, false);
+
+    /// <summary>Sondagem: só o h264_mf funciona; captura: entrega o vídeo de teste.</summary>
+    private static FakeProcessRunner WorkingRunner() =>
+        new(args => args.Contains("-frames:v") ? new FakeProcess(args.Contains("h264_mf") ? 0 : 1) : new FakeProcess(0, AccessUnitReaderTests.Fixture()));
+
+    [Fact]
+    public async Task ExtendsWithTheVirtualMonitorAndDetachesOnDispose()
+    {
+        var monitor = new FakeVirtualMonitor();
+        var runner = WorkingRunner();
+        var factory = new VideoFeedFactory("ffmpeg", runner, () => monitor.Attached ? new[] { Main, Virtual } : new[] { Main }, () => null, _ => { }, monitor);
+
+        var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.NotNull(feed);
+        Assert.Equal(VideoKind.Extend, feed!.Kind);
+        Assert.Equal(new VideoConfig(2556, 1179, 60), feed.Config);
+        await feed.NextAsync(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
+        Assert.Contains("ddagrab=output_idx=2:framerate=60:draw_mouse=1", runner.Started.Last(a => !a.Contains("-frames:v")));
+        await feed.DisposeAsync();
+        Assert.Equal(new[] { Virtual.DeviceName }, monitor.Detached);
+    }
+
+    [Fact]
+    public async Task WithoutTheDriverMirrorsAndWarns()
+    {
+        var monitor = new FakeVirtualMonitor { Installed = false };
+        var warned = 0;
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [Main, Side], () => null, _ => { }, monitor);
+        factory.DriverMissing += () => warned++;
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Mirror, feed!.Kind);
+        Assert.Equal(new VideoConfig(1366, 768, 60), feed.Config);
+        Assert.Equal(1, warned);
+        Assert.Empty(monitor.Detached);
+    }
+
+    [Fact]
+    public async Task AttachFailureFallsBackToMirror()
+    {
+        var monitor = new FakeVirtualMonitor { AttachError = new DisplayChangeException(-2, "ligar") };
+        var log = new ConcurrentQueue<string>();
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [Main, Side], () => null, log.Enqueue, monitor);
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Mirror, feed!.Kind);
+        Assert.Contains(log, line => line.StartsWith("não deu para ligar o monitor virtual", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task VirtualOutputMissingFromDxgiDetachesAndMirrors()
+    {
+        var monitor = new FakeVirtualMonitor();
+        var log = new ConcurrentQueue<string>();
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [Main, Side], () => null, log.Enqueue, monitor)
+        {
+            OutputWait = TimeSpan.FromMilliseconds(200),
+        };
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Mirror, feed!.Kind);
+        Assert.Equal(new[] { monitor.Device }, monitor.Detached);
+        Assert.Contains(log, line => line.Contains("fora do adaptador 0", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task LogsWhenTheDriverHasNoExactMode()
+    {
+        var monitor = new FakeVirtualMonitor { Mode = new DisplayModeInfo(2622, 1206, 60) };
+        var wide = Virtual with { Width = 2622, Height = 1206 };
+        var log = new ConcurrentQueue<string>();
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => monitor.Attached ? new[] { Main, wide } : new[] { Main }, () => null, log.Enqueue, monitor);
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(new VideoConfig(2622, 1206, 60), feed!.Config);
+        Assert.Contains("o monitor virtual não tem 2556×1179: usando 2622×1206", log);
+    }
+
+    [Fact]
+    public async Task ProbeFailureDetachesTheVirtualMonitor()
+    {
+        var monitor = new FakeVirtualMonitor();
+        var factory = new VideoFeedFactory("ffmpeg", new FakeProcessRunner(_ => new FakeProcess(1)),
+            () => monitor.Attached ? new[] { Main, Virtual } : new[] { Main }, () => null, _ => { }, monitor);
+
+        Assert.Null(await factory.OpenAsync(Hello, CancellationToken.None));
+        Assert.Equal(new[] { monitor.Device }, monitor.Detached);
+    }
+
+    [Fact]
+    public async Task LogsWhenTheMonitorStaysAfterAFailedOpen()
+    {
+        var monitor = new FakeVirtualMonitor { StaysAttached = true };
+        var log = new ConcurrentQueue<string>();
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [Main, Side], () => null, log.Enqueue, monitor)
+        {
+            OutputWait = TimeSpan.FromMilliseconds(200),
+        };
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Mirror, feed!.Kind);
+        Assert.Contains($"o monitor virtual {monitor.Device} continua no desktop depois de desligar", log);
     }
 }
