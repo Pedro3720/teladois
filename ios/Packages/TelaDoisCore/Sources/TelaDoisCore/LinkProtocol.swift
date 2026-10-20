@@ -11,6 +11,8 @@ public enum LinkMessageType: UInt8, Sendable {
     case pong = 6
     case bye = 7
     case videoEnd = 8
+    /// iPhone → PC, 1 vez por segundo com a Segunda Tela ligada: medidores do último intervalo.
+    case stats = 9
 }
 
 /// Uma mensagem: `[tipo: 1 byte][tamanho: 4 bytes big-endian][dados]`.
@@ -71,6 +73,48 @@ public struct LinkVideoFrame: Equatable, Sendable {
         self.isKeyframe = isKeyframe
         self.timestamp = timestamp
         self.accessUnit = accessUnit
+    }
+}
+
+/// Medidores do iPhone no último intervalo (zerados depois de mandar). Descartadas = pelo decodificador (sem formato,
+/// esperando imagem completa ou depois de uma falha); durações em µs. Mesmos campos e ordem do `LinkStats` em C#.
+public struct LinkStats: Equatable, Sendable {
+    public var framesReceived: UInt32
+    public var framesEnqueued: UInt32
+    public var framesDropped: UInt32
+    public var bytesReceived: UInt32
+    public var mainLagAvgMicros: UInt32
+    public var mainLagMaxMicros: UInt32
+    public var receiveToEnqueueAvgMicros: UInt32
+    public var receiveToEnqueueMaxMicros: UInt32
+    public var rendererFailures: UInt32
+
+    public static let zero = LinkStats(
+        framesReceived: 0, framesEnqueued: 0, framesDropped: 0, bytesReceived: 0,
+        mainLagAvgMicros: 0, mainLagMaxMicros: 0, receiveToEnqueueAvgMicros: 0, receiveToEnqueueMaxMicros: 0,
+        rendererFailures: 0
+    )
+
+    public init(
+        framesReceived: UInt32, framesEnqueued: UInt32, framesDropped: UInt32, bytesReceived: UInt32,
+        mainLagAvgMicros: UInt32, mainLagMaxMicros: UInt32,
+        receiveToEnqueueAvgMicros: UInt32, receiveToEnqueueMaxMicros: UInt32,
+        rendererFailures: UInt32
+    ) {
+        self.framesReceived = framesReceived
+        self.framesEnqueued = framesEnqueued
+        self.framesDropped = framesDropped
+        self.bytesReceived = bytesReceived
+        self.mainLagAvgMicros = mainLagAvgMicros
+        self.mainLagMaxMicros = mainLagMaxMicros
+        self.receiveToEnqueueAvgMicros = receiveToEnqueueAvgMicros
+        self.receiveToEnqueueMaxMicros = receiveToEnqueueMaxMicros
+        self.rendererFailures = rendererFailures
+    }
+
+    fileprivate var fields: [UInt32] {
+        [framesReceived, framesEnqueued, framesDropped, bytesReceived, mainLagAvgMicros, mainLagMaxMicros,
+         receiveToEnqueueAvgMicros, receiveToEnqueueMaxMicros, rendererFailures]
     }
 }
 
@@ -135,6 +179,22 @@ public enum LinkProtocol {
 
     /// O PC parou a Segunda Tela sem desconectar: volta ao relógio.
     public static func videoEnd() -> LinkFrame { LinkFrame(.videoEnd) }
+
+    public static func stats(_ stats: LinkStats) -> LinkFrame {
+        LinkFrame(.stats, payload: stats.fields.flatMap { bigEndianBytes($0) })
+    }
+
+    public static func parseStats(_ frame: LinkFrame) -> LinkStats? {
+        guard frame.messageType == .stats, frame.payload.count == 36 else { return nil }
+        let bytes = frame.payload[...]
+        func field(_ index: Int) -> UInt32 { readBigEndian(bytes[(index * 4)..<(index * 4 + 4)]) }
+        return LinkStats(
+            framesReceived: field(0), framesEnqueued: field(1), framesDropped: field(2), bytesReceived: field(3),
+            mainLagAvgMicros: field(4), mainLagMaxMicros: field(5),
+            receiveToEnqueueAvgMicros: field(6), receiveToEnqueueMaxMicros: field(7),
+            rendererFailures: field(8)
+        )
+    }
 
     /// Carimbo de tempo de um `PING` ou `PONG`.
     public static func timestamp(of frame: LinkFrame) -> UInt64? {
