@@ -33,6 +33,16 @@ final class LinkProtocolTests: XCTestCase {
         XCTAssertEqual(LinkFrame(type: 8).messageType, .videoEnd)
     }
 
+    func testScreenMatchesGoldenBytes() {
+        XCTAssertEqual(LinkProtocol.screen(dark: true).encoded(), hex("0A0000000101"))
+        XCTAssertEqual(LinkProtocol.screen(dark: false).encoded(), hex("0A0000000100"))
+        XCTAssertEqual(LinkProtocol.parseScreen(LinkFrame(type: 10, payload: [1])), true)
+        XCTAssertEqual(LinkProtocol.parseScreen(LinkFrame(type: 10, payload: [0])), false)
+        XCTAssertNil(LinkProtocol.parseScreen(LinkFrame(type: 10, payload: [])))
+        XCTAssertNil(LinkProtocol.parseScreen(LinkFrame(type: 10, payload: [1, 0])))
+        XCTAssertEqual(LinkFrame(type: 10).messageType, .screen)
+    }
+
     func testStatsMatchesGoldenBytes() {
         let stats = LinkStats(
             framesReceived: 1, framesEnqueued: 2, framesDropped: 3, bytesReceived: 4,
