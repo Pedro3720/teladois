@@ -41,12 +41,15 @@ public sealed class FfmpegCapture : IVideoFeed
         _endedWithoutFrames = endedWithoutFrames;
         _log = log;
         Config = config;
-        _queue = new FrameQueue(maxQueueAge);
+        _queue = new FrameQueue(maxQueueAge, meters: Meters);
         _queue.DropStarted += () => log($"cabo atrasado: descartando até a próxima imagem completa ({_queue.Dropped} descartadas até agora)");
         _pump = Task.Run(() => PumpAsync(runner, ffmpegPath, arguments, log, waits, _cts.Token));
     }
 
     public VideoConfig Config { get; }
+
+    /// <summary>Imagens lidas do FFmpeg, descartes e idade na fila (diagnóstico).</summary>
+    public VideoMeters Meters { get; } = new();
 
     public long Dropped => _queue.Dropped;
 
@@ -137,6 +140,7 @@ public sealed class FfmpegCapture : IVideoFeed
                     {
                         sawFrames = true;
                         Volatile.Write(ref _produced, 1);
+                        Meters.FrameRead();
                         _queue.Add(unit);
                     }
                 }

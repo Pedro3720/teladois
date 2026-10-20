@@ -851,4 +851,63 @@ public class LinkSessionTests
         await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
         Assert.Equal(LinkEndReason.Bye, await run);
     }
+
+    [Fact]
+    public async Task LogsOneStatsLinePerIntervalWithThePhoneSide()
+    {
+        var (pc, phone) = await Loopback.CreatePairAsync();
+        await using var _pc = pc;
+        await using var _phone = phone;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var feed = new FixedFeed(new VideoConfig(1366, 768, 60), [new AccessUnit([0, 0, 0, 1, 9, 0xF0, 0, 0, 0, 1, 0x65], true), new AccessUnit([0, 0, 0, 1, 9, 0xF0, 0, 0, 0, 1, 0x41], false)]);
+        var log = new ConcurrentQueue<string>();
+        var options = Patient with { StatsInterval = TimeSpan.FromMilliseconds(100) };
+        var run = LinkSession.RunAsync(pc, _ => { }, options, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(feed), log: log.Enqueue);
+        var phoneStats = LinkMessages.Stats(new LinkStats(60, 58, 2, 387_500, 2_000, 40_000, 1_000, 9_000, 1)).Encode();
+
+        await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
+        var reader = new LinkFrameReader(phone);
+        bool HasPhoneLine() => log.Any(l => l.Contains(" | iPhone: recebidas 60 · "));
+        while (!HasPhoneLine())
+        {
+            var frame = await reader.NextAsync(cts.Token) ?? throw new IOException("o PC fechou o socket");
+            if (frame.MessageType == LinkMessageType.Ping && LinkMessages.TryReadTimestamp(frame, out var sent))
+            {
+                await phone.WriteAsync(LinkMessages.Pong(sent).Encode(), cts.Token);
+                await phone.WriteAsync(phoneStats, cts.Token);
+            }
+        }
+
+        var lines = log.Where(l => l.StartsWith("vídeo/s: ", StringComparison.Ordinal)).ToList();
+        Assert.Contains(lines, l => l.StartsWith("vídeo/s: lidas 0 · enviadas 2 · ", StringComparison.Ordinal));
+        var withPhone = lines.First(l => l.Contains(" | iPhone: recebidas 60 · "));
+        Assert.EndsWith(
+            " | iPhone: recebidas 60 · 3,1 Mbit/s · na tela 58 · descartadas 2 · falhas 1 · fila principal méd 2 / máx 40 ms · receber→decodificar méd 1 / máx 9 ms",
+            withPhone);
+        await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
+        Assert.Equal(LinkEndReason.Bye, await run);
+    }
+
+    [Fact]
+    public async Task MalformedStatsIsIgnoredAndThereAreNoStatsLinesWithoutVideo()
+    {
+        var (pc, phone) = await Loopback.CreatePairAsync();
+        await using var _pc = pc;
+        await using var _phone = phone;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var log = new ConcurrentQueue<string>();
+        var options = Patient with { StatsInterval = TimeSpan.FromMilliseconds(50) };
+        var run = LinkSession.RunAsync(pc, _ => { }, options, cts.Token, log: log.Enqueue);
+
+        await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
+        await phone.WriteAsync(new LinkFrame(LinkMessageType.Stats, [1, 2, 3]).Encode(), cts.Token);
+        await phone.WriteAsync(LinkMessages.Stats(new LinkStats(1, 2, 3, 4, 5, 6, 7, 8, 9)).Encode(), cts.Token);
+        var reader = new LinkFrameReader(phone);
+        var seen = new List<LinkMessageType>();
+        await AnswerUntilAsync(phone, reader, () => seen.Count(t => t == LinkMessageType.Ping) >= 6, seen, cts.Token);
+        Assert.False(run.IsCompleted);
+        Assert.DoesNotContain(log, l => l.StartsWith("vídeo/s: ", StringComparison.Ordinal));
+        await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
+        Assert.Equal(LinkEndReason.Bye, await run);
+    }
 }

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using TelaDois.Core.Video;
 
 namespace TelaDois.Core.Link;
@@ -12,6 +13,9 @@ public sealed record LinkSessionOptions(TimeSpan PingInterval, TimeSpan Timeout)
     /// (uma captura que nunca entrega deixaria um monitor estendido invisível, sem aviso).
     /// </summary>
     public TimeSpan FirstFrameTimeout { get; init; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>Com o vídeo ligado, uma linha de medidores no registro a cada intervalo (diagnóstico).</summary>
+    public TimeSpan StatsInterval { get; init; } = TimeSpan.FromSeconds(1);
 }
 
 /// <summary>Estado da conexão: resolução do iPhone, a última latência medida e, com o vídeo ligado, formato e tipo.</summary>
@@ -61,6 +65,8 @@ public static class LinkSession
         Task? sending = null;
         var retiring = new List<Task>();
         var configSent = 0;
+        // Último STATS do iPhone ainda não registrado (null = nenhum desde a última linha).
+        StrongBox<LinkStats>? phoneStats = null;
 
         // Toda escrita, inclusive a espera pela vez, tem tempo-limite: um iPhone que parou de ler encerra a sessão.
         async Task SendAsync(LinkFrame frame, CancellationToken token)
@@ -119,6 +125,32 @@ public static class LinkSession
             }, CancellationToken.None);
         }
 
+        // Uma linha de medidores por intervalo enquanto o envio roda (só diagnóstico). Nunca lança: termina no cancelamento
+        // ou se o registro falhar.
+        async Task ReportAsync(VideoMeters meters, CancellationToken token)
+        {
+            try
+            {
+                var last = clock.Elapsed;
+                while (true)
+                {
+                    await Task.Delay(options.StatsInterval, token);
+                    var now = clock.Elapsed;
+                    TimeSpan? roundTrip;
+                    lock (statusLock)
+                    {
+                        roundTrip = status?.RoundTrip;
+                    }
+                    var phone = Interlocked.Exchange(ref phoneStats, null);
+                    log?.Invoke(VideoStatsLine.Format(meters.Take(), now - last, roundTrip, phone?.Value));
+                    last = now;
+                }
+            }
+            catch (Exception)
+            {
+            }
+        }
+
         // Termina sem erro quando o feed acaba, falha ou é cancelado (o vídeo desliga e a sessão segue); só uma falha
         // de escrita (IOException/TimeoutException) ou o fim da sessão saem como exceção.
         void StartSending(IVideoFeed activeFeed)
@@ -165,12 +197,29 @@ public static class LinkSession
                 await SendAsync(LinkMessages.Config(activeFeed.Config), cts.Token);
                 Interlocked.Exchange(ref configSent, 1);
                 Update(s => s with { Video = activeFeed.Config, Kind = activeFeed.Kind });
-                var started = Stopwatch.StartNew();
-                while (unit is not null && !token.IsCancellationRequested)
+                // Medidores: os da captura (lidas, fila, descartes) quando houver; as escritas são somadas aqui.
+                var meters = activeFeed.Meters ?? new VideoMeters();
+                _ = meters.Take(); // o 1º intervalo começa agora, não na abertura do feed
+                Interlocked.Exchange(ref phoneStats, null);
+                using var reportCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                var reporting = ReportAsync(meters, reportCts.Token);
+                try
                 {
-                    // Escritas com o token da sessão: cancelar o vídeo no meio de uma escrita cortaria a mensagem.
-                    await SendAsync(LinkMessages.Video(unit.IsKeyframe, (ulong)(started.Elapsed.Ticks / 10), unit.Data), cts.Token);
-                    unit = await NextOrEndAsync(token);
+                    var started = Stopwatch.StartNew();
+                    while (unit is not null && !token.IsCancellationRequested)
+                    {
+                        // Escritas com o token da sessão: cancelar o vídeo no meio de uma escrita cortaria a mensagem.
+                        var video = LinkMessages.Video(unit.IsKeyframe, (ulong)(started.Elapsed.Ticks / 10), unit.Data);
+                        var writeStarted = Stopwatch.GetTimestamp();
+                        await SendAsync(video, cts.Token);
+                        meters.FrameSent(LinkFrame.HeaderSize + video.Payload.Length, Stopwatch.GetElapsedTime(writeStarted));
+                        unit = await NextOrEndAsync(token);
+                    }
+                }
+                finally
+                {
+                    reportCts.Cancel();
+                    await reporting;
                 }
             }, CancellationToken.None);
         }
@@ -263,6 +312,10 @@ public static class LinkSession
                             break;
                         case LinkMessageType.Ping when LinkMessages.TryReadTimestamp(frame, out var theirs):
                             await SendAsync(LinkMessages.Pong(theirs), cts.Token);
+                            break;
+                        case LinkMessageType.Stats when LinkMessages.TryParseStats(frame, out var phone):
+                            // Só para a linha de medidores; um STATS malformado é ignorado como tipo desconhecido.
+                            Interlocked.Exchange(ref phoneStats, new StrongBox<LinkStats>(phone));
                             break;
                         case LinkMessageType.Bye:
                             return LinkEndReason.Bye;

@@ -51,6 +51,25 @@ public class FfmpegCaptureTests
     }
 
     [Fact]
+    public async Task MetersCountTheFramesReadFromFfmpeg()
+    {
+        var runner = new FakeProcessRunner(_ => new FakeProcess(0, AccessUnitReaderTests.Fixture()));
+        await using var capture = new FfmpegCapture(runner, "ffmpeg", ["-x"], Config, _ => { }, NoRestart, maxQueueAge: TimeSpan.FromMinutes(1));
+        using var cts = new CancellationTokenSource(Generous);
+        var taken = 0;
+        while (taken < 3)
+        {
+            await capture.NextAsync(cts.Token);
+            taken++;
+        }
+        var meters = ((IVideoFeed)capture).Meters;
+        Assert.NotNull(meters);
+        var snapshot = meters.Take();
+        Assert.True(snapshot.Read >= 3, $"lidas {snapshot.Read}");
+        Assert.Equal(3, snapshot.Queue.Count);
+    }
+
+    [Fact]
     public async Task DisposingBeforeTheFirstFrameDoesNotReportAMissingPicture()
     {
         // Desligar/tirar o cabo antes da 1ª imagem é decisão do usuário: não deve fazer esquecer a compressão.

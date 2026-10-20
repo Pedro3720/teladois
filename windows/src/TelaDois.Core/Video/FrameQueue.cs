@@ -19,13 +19,16 @@ public sealed class FrameQueue
     private readonly SemaphoreSlim _signal = new(0);
     private readonly double _maxAgeMs;
     private readonly Func<long> _nowMs;
+    private readonly VideoMeters? _meters;
     private bool _waitingForKeyframe;
     private long _dropped;
 
     /// <param name="maxAge">Idade máxima da imagem mais antiga esperando (padrão 100 ms; precisa ser positiva).</param>
     /// <param name="nowMs">Relógio em milissegundos (padrão: <see cref="Stopwatch"/>); os testes passam um relógio falso.</param>
-    public FrameQueue(TimeSpan? maxAge = null, Func<long>? nowMs = null)
+    /// <param name="meters">Se houver, recebe cada descarte e a idade de cada imagem ao sair (só medição).</param>
+    public FrameQueue(TimeSpan? maxAge = null, Func<long>? nowMs = null, VideoMeters? meters = null)
     {
+        _meters = meters;
         var age = maxAge ?? DefaultMaxAge;
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(age, TimeSpan.Zero, nameof(maxAge));
         _maxAgeMs = age.TotalMilliseconds;
@@ -50,6 +53,7 @@ public sealed class FrameQueue
             if (_waitingForKeyframe && !unit.IsKeyframe)
             {
                 Interlocked.Increment(ref _dropped);
+                _meters?.FramesDropped(1);
                 return;
             }
             _waitingForKeyframe = false;
@@ -58,10 +62,12 @@ public sealed class FrameQueue
             {
                 dropStarted = true;
                 Interlocked.Add(ref _dropped, _items.Count);
+                _meters?.FramesDropped(_items.Count);
                 _items.Clear();
                 if (!unit.IsKeyframe)
                 {
                     Interlocked.Increment(ref _dropped);
+                    _meters?.FramesDropped(1);
                     _waitingForKeyframe = true;
                 }
             }
@@ -95,6 +101,7 @@ public sealed class FrameQueue
             {
                 if (_items.TryDequeue(out var item))
                 {
+                    _meters?.QueueAge(TimeSpan.FromMilliseconds(_nowMs() - item.AddedMs));
                     return item.Unit;
                 }
             }

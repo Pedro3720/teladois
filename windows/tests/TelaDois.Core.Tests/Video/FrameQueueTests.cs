@@ -137,6 +137,27 @@ public class FrameQueueTests
         Assert.Single(episodes);
     }
 
+    [Fact]
+    public async Task MetersRecordTheAgeOfEachFrameLeavingAndEveryDrop()
+    {
+        var meters = new VideoMeters();
+        var queue = new FrameQueue(TimeSpan.FromMilliseconds(100), () => _nowMs, meters);
+        queue.Add(Frame(1, true));
+        _nowMs = 30;
+        queue.Add(Frame(2));
+        Assert.Equal(new byte[] { 1 }, await TakeIds(queue, 1)); // esperou 30 ms
+        _nowMs = 40;
+        Assert.Equal(new byte[] { 2 }, await TakeIds(queue, 1)); // esperou 10 ms
+        Assert.Equal(new DurationSummary(2, 20, 30), meters.Take().Queue);
+
+        queue.Add(Frame(3, true));
+        _nowMs = 200;
+        queue.Add(Frame(4));        // a 3 esperou 160 ms: descarta 3 e 4
+        queue.Add(Frame(5));        // esperando imagem completa: descarta
+        Assert.Equal(queue.Dropped, meters.Take().Dropped);
+        Assert.Equal(3, queue.Dropped);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]

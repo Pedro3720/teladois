@@ -31,6 +31,8 @@ public sealed class VirtualMonitorFeed : IVideoFeed
 
     public VideoKind Kind => VideoKind.Extend;
 
+    public VideoMeters? Meters => _capture.Meters;
+
     public async Task<AccessUnit> NextAsync(CancellationToken ct)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _gone.Token);
