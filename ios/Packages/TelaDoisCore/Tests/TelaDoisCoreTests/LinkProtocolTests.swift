@@ -33,9 +33,37 @@ final class LinkProtocolTests: XCTestCase {
         XCTAssertEqual(LinkFrame(type: 8).messageType, .videoEnd)
     }
 
+    func testStatsMatchesGoldenBytes() {
+        let stats = LinkStats(
+            framesReceived: 1, framesEnqueued: 2, framesDropped: 3, bytesReceived: 4,
+            mainLagAvgMicros: 5, mainLagMaxMicros: 6, receiveToEnqueueAvgMicros: 7, receiveToEnqueueMaxMicros: 8,
+            rendererFailures: 9
+        )
+        XCTAssertEqual(
+            LinkProtocol.stats(stats).encoded(),
+            hex("0900000024000000010000000200000003000000040000000500000006000000070000000800000009")
+        )
+        XCTAssertEqual(LinkFrame(type: 9).messageType, .stats)
+    }
+
+    func testParsesStats() {
+        let stats = LinkStats(
+            framesReceived: 60, framesEnqueued: 59, framesDropped: 1, bytesReceived: 400_000,
+            mainLagAvgMicros: 2_000, mainLagMaxMicros: 40_000, receiveToEnqueueAvgMicros: 1_000, receiveToEnqueueMaxMicros: 9_000,
+            rendererFailures: 0
+        )
+        XCTAssertEqual(LinkProtocol.parseStats(LinkProtocol.stats(stats)), stats)
+    }
+
+    func testRejectsStatsWithWrongSize() {
+        XCTAssertNil(LinkProtocol.parseStats(LinkFrame(.stats, payload: [UInt8](repeating: 0, count: 35))))
+        XCTAssertNil(LinkProtocol.parseStats(LinkFrame(.stats, payload: [UInt8](repeating: 0, count: 37))))
+        XCTAssertNil(LinkProtocol.parseStats(LinkFrame(.pong, payload: [UInt8](repeating: 0, count: 36))))
+    }
+
     func testMessageTypesKeepTheBytesOfTheCSharpSide() {
-        let types: [LinkMessageType] = [.hello, .config, .video, .keyframeRequest, .ping, .pong, .bye, .videoEnd]
-        XCTAssertEqual(types.map(\.rawValue), [1, 2, 3, 4, 5, 6, 7, 8])
+        let types: [LinkMessageType] = [.hello, .config, .video, .keyframeRequest, .ping, .pong, .bye, .videoEnd, .stats]
+        XCTAssertEqual(types.map(\.rawValue), [1, 2, 3, 4, 5, 6, 7, 8, 9])
     }
 
     func testParsesConfigAndVideo() {
