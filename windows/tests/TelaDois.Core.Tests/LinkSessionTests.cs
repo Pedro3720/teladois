@@ -8,13 +8,17 @@ namespace TelaDois.Core.Tests;
 
 public class LinkSessionTests
 {
-    // Fast: PINGs rápidos e tempo-limite curto, só para os testes que provam o próprio tempo-limite (e a ausência de
-    // silêncio maior que ele). Patient: PINGs igualmente rápidos, mas um tempo-limite que uma pausa do agendador (CI com
+    // Fast: PINGs rápidos e tempo-limite curto, só para os testes que provam o próprio tempo-limite.
+    // Patient: PINGs igualmente rápidos, mas um tempo-limite que uma pausa do agendador (CI com
     // 2 núcleos, testes em paralelo) não alcança. Com o tempo-limite de 400 ms, uma pausa dessas fazia a sessão acabar
     // sozinha (Timeout + BYE) e o teste, que não fecha o socket, ficava lendo até o limite de 10 s e falhava com
     // OperationCanceledException sem dizer por quê.
     private static readonly LinkSessionOptions Fast = new(TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(400));
     private static readonly LinkSessionOptions Patient = new(TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(30));
+    // Guarded: para os testes que provam que o laço da sessão não fica parado durante uma abertura/descarte lento (2 s):
+    // bloquear o laço de envio deixa o iPhone 2 s sem nada (> 1 s, falha na medição), e bloquear o processamento dos
+    // PONGs faz a sessão acabar em Timeout + BYE dentro dos 2 s. O 1 s dá folga a pausas do agendador (o 400 ms do Fast não).
+    private static readonly LinkSessionOptions Guarded = new(TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(1));
 
     [Fact]
     public async Task ReportsHelloThenRoundTrip()
@@ -229,7 +233,7 @@ public class LinkSessionTests
             {
                 Interlocked.Increment(ref videoStatuses);
             }
-        }, Patient, cts.Token, async (_, token) =>
+        }, Guarded, cts.Token, async (_, token) =>
         {
             await gate.Task.WaitAsync(token);
             return feed;
@@ -238,8 +242,8 @@ public class LinkSessionTests
         await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
         var reader = new LinkFrameReader(phone);
         var seen = new List<LinkMessageType>();
-        // 12 PINGs a cada 50 ms passam do tempo-limite de 400 ms: a sessão segue viva enquanto o vídeo não abre.
-        await AnswerUntilAsync(phone, reader, () => seen.Count(t => t == LinkMessageType.Ping) >= 12, seen, cts.Token);
+        // 30 PINGs a cada 50 ms (1,5 s) passam do tempo-limite de 1 s: a sessão segue viva enquanto o vídeo não abre.
+        await AnswerUntilAsync(phone, reader, () => seen.Count(t => t == LinkMessageType.Ping) >= 30, seen, cts.Token);
         Assert.False(run.IsCompleted);
         Assert.DoesNotContain(LinkMessageType.Config, seen);
         Assert.All(statuses, s => Assert.Null(s.Video));
@@ -441,7 +445,7 @@ public class LinkSessionTests
         var (pc, phone) = await Loopback.CreatePairAsync();
         await using var _pc = pc;
         await using var _phone = phone;
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var mode = new MonitorMode();
         mode.SessionStarted();
         var feeds = new ConcurrentQueue<GatedFeed>();
@@ -600,10 +604,10 @@ public class LinkSessionTests
     }
 
     /// <summary>O iPhone desconecta depois do tempo-limite sem receber nada: nenhum intervalo entre mensagens pode chegar a ele.</summary>
-    private static void AssertNoSilenceLongerThanTimeout(List<long> arrivals)
+    private static void AssertNoSilenceLongerThanTimeout(List<long> arrivals, LinkSessionOptions options)
     {
         var longest = arrivals.Zip(arrivals.Skip(1), (a, b) => b - a).DefaultIfEmpty(0).Max();
-        Assert.True(longest < Fast.Timeout.TotalMilliseconds, $"o iPhone ficou {longest} ms sem receber nada");
+        Assert.True(longest < options.Timeout.TotalMilliseconds, $"o iPhone ficou {longest} ms sem receber nada");
     }
 
     [Fact]
@@ -612,15 +616,15 @@ public class LinkSessionTests
         var (pc, phone) = await Loopback.CreatePairAsync();
         await using var _pc = pc;
         await using var _phone = phone;
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var mode = new MonitorMode();
         mode.SessionStarted();
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var feed = new SlowToDisposeFeed(TimeSpan.Zero);
-        var run = LinkSession.RunAsync(pc, _ => { }, Fast, cts.Token, async (_, _) =>
+        var run = LinkSession.RunAsync(pc, _ => { }, Guarded, cts.Token, async (_, _) =>
         {
             started.TrySetResult();
-            await Task.Delay(TimeSpan.FromSeconds(1)); // ignora o token, como a sondagem do FFmpeg que não para a tempo
+            await Task.Delay(TimeSpan.FromSeconds(2)); // ignora o token, como a sondagem do FFmpeg que não para a tempo
             return feed;
         }, mode);
 
@@ -636,7 +640,7 @@ public class LinkSessionTests
             seen.Contains(LinkMessageType.Bye) || (feed.Disposed && seen.Skip(afterOff).Count(t => t == LinkMessageType.Ping) >= 4), seen, cts.Token, arrivals);
         Assert.DoesNotContain(LinkMessageType.Bye, seen);
         Assert.False(run.IsCompleted);
-        AssertNoSilenceLongerThanTimeout(arrivals);
+        AssertNoSilenceLongerThanTimeout(arrivals, Guarded);
         Assert.Equal(1, feed.Disposals);
         Assert.DoesNotContain(LinkMessageType.Config, seen);
         Assert.DoesNotContain(LinkMessageType.VideoEnd, seen);
@@ -656,9 +660,9 @@ public class LinkSessionTests
         var mode = new MonitorMode();
         mode.SessionStarted();
         var feeds = new ConcurrentQueue<SlowToDisposeFeed>();
-        var run = LinkSession.RunAsync(pc, _ => { }, Fast, cts.Token, (_, _) =>
+        var run = LinkSession.RunAsync(pc, _ => { }, Guarded, cts.Token, (_, _) =>
         {
-            var feed = new SlowToDisposeFeed(TimeSpan.FromSeconds(1));
+            var feed = new SlowToDisposeFeed(TimeSpan.FromSeconds(2));
             feeds.Enqueue(feed);
             return Task.FromResult<IVideoFeed?>(feed);
         }, mode);
@@ -677,7 +681,7 @@ public class LinkSessionTests
             || (first.Disposed && seen.Contains(LinkMessageType.VideoEnd) && seen.Skip(afterOff).Count(t => t == LinkMessageType.Ping) >= 4), seen, cts.Token, arrivals);
         Assert.DoesNotContain(LinkMessageType.Bye, seen);
         Assert.False(run.IsCompleted);
-        AssertNoSilenceLongerThanTimeout(arrivals);
+        AssertNoSilenceLongerThanTimeout(arrivals, Guarded);
         Assert.Equal(1, first.Disposals);
         var end = seen.IndexOf(LinkMessageType.VideoEnd);
         Assert.DoesNotContain(LinkMessageType.Video, seen.Skip(end));
