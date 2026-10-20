@@ -6,6 +6,12 @@ namespace TelaDois.Core.Link;
 public sealed record LinkSessionOptions(TimeSpan PingInterval, TimeSpan Timeout)
 {
     public static LinkSessionOptions Default { get; } = new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(3));
+
+    /// <summary>
+    /// Quanto o feed aberto tem para entregar a 1ª imagem. Estourou: o vídeo desliga como se tivesse parado sozinho
+    /// (uma captura que nunca entrega deixaria um monitor estendido invisível, sem aviso).
+    /// </summary>
+    public TimeSpan FirstFrameTimeout { get; init; } = TimeSpan.FromSeconds(10);
 }
 
 /// <summary>Estado da conexão: resolução do iPhone, a última latência medida e, com o vídeo ligado, formato e tipo.</summary>
@@ -38,7 +44,8 @@ public static class LinkSession
         LinkSessionOptions options,
         CancellationToken ct,
         Func<HelloInfo, CancellationToken, Task<IVideoFeed?>>? openVideo = null,
-        IVideoSwitch? videoSwitch = null)
+        IVideoSwitch? videoSwitch = null,
+        Action<string>? log = null)
     {
         var reader = new LinkFrameReader(stream);
         using var writeLock = new SemaphoreSlim(1, 1);
@@ -117,11 +124,11 @@ public static class LinkSession
         void StartSending(IVideoFeed activeFeed)
         {
             var token = videoCts!.Token;
-            async Task<AccessUnit?> NextOrEndAsync()
+            async Task<AccessUnit?> NextOrEndAsync(CancellationToken next)
             {
                 try
                 {
-                    return await activeFeed.NextAsync(token);
+                    return await activeFeed.NextAsync(next);
                 }
                 catch (Exception)
                 {
@@ -131,8 +138,18 @@ public static class LinkSession
 
             sending = Task.Run(async () =>
             {
-                // CONFIG só com a 1ª imagem pronta (I1): uma captura que falha logo não deixa o iPhone preto.
-                var unit = await NextOrEndAsync();
+                // CONFIG só com a 1ª imagem pronta (I1): uma captura que falha logo não deixa o iPhone preto. Sem imagem
+                // no prazo, termina como um feed que parou sozinho: o vídeo desliga e o feed é descartado.
+                AccessUnit? unit;
+                using (var firstFrame = CancellationTokenSource.CreateLinkedTokenSource(token))
+                {
+                    firstFrame.CancelAfter(options.FirstFrameTimeout);
+                    unit = await NextOrEndAsync(firstFrame.Token);
+                    if (unit is null && firstFrame.IsCancellationRequested && !token.IsCancellationRequested)
+                    {
+                        log?.Invoke($"nenhuma imagem do vídeo em {options.FirstFrameTimeout.TotalSeconds:0} s: Segunda Tela desligada");
+                    }
+                }
                 if (unit is null || token.IsCancellationRequested)
                 {
                     return;
@@ -145,7 +162,7 @@ public static class LinkSession
                 {
                     // Escritas com o token da sessão: cancelar o vídeo no meio de uma escrita cortaria a mensagem.
                     await SendAsync(LinkMessages.Video(unit.IsKeyframe, (ulong)(started.Elapsed.Ticks / 10), unit.Data), cts.Token);
-                    unit = await NextOrEndAsync();
+                    unit = await NextOrEndAsync(token);
                 }
             }, CancellationToken.None);
         }

@@ -536,6 +536,44 @@ public class LinkSessionTests
     }
 
     [Fact]
+    public async Task FeedWithoutAFirstFrameInTimeIsDisposedAndTurnsTheSwitchOff()
+    {
+        var (pc, phone) = await Loopback.CreatePairAsync();
+        await using var _pc = pc;
+        await using var _phone = phone;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var mode = new MonitorMode();
+        mode.SessionStarted();
+        var feed = new GatedFeed(new VideoConfig(2556, 1179, 60), VideoKind.Extend); // nunca libera a 1ª imagem
+        var log = new ConcurrentQueue<string>();
+        var options = Guarded with { FirstFrameTimeout = TimeSpan.FromSeconds(2) };
+        var run = LinkSession.RunAsync(pc, _ => { }, options, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(feed), mode, log.Enqueue);
+
+        await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
+        var reader = new LinkFrameReader(phone);
+        var seen = new List<LinkMessageType>();
+        var arrivals = new List<long> { Environment.TickCount64 };
+        await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.Bye) || (!mode.WantsVideo && feed.Disposed), seen, cts.Token, arrivals);
+        var afterOff = seen.Count;
+        await AnswerUntilAsync(phone, reader, () => seen.Skip(afterOff).Count(t => t == LinkMessageType.Ping) >= 4, seen, cts.Token, arrivals);
+        Assert.DoesNotContain(LinkMessageType.Bye, seen);
+        Assert.False(run.IsCompleted);
+        Assert.True(mode.IsConnected);
+        AssertNoSilenceLongerThanTimeout(arrivals, options);
+        // Sem imagem o iPhone nunca recebeu CONFIG: nada de VIDEO_END.
+        Assert.DoesNotContain(LinkMessageType.Config, seen);
+        Assert.DoesNotContain(LinkMessageType.VideoEnd, seen);
+        Assert.Contains("nenhuma imagem do vídeo em 2 s: Segunda Tela desligada", log);
+
+        await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
+        Assert.Equal(LinkEndReason.Bye, await run);
+    }
+
+    [Fact]
+    public void FirstFrameTimeoutDefaultsToTenSeconds() =>
+        Assert.Equal(TimeSpan.FromSeconds(10), LinkSessionOptions.Default.FirstFrameTimeout);
+
+    [Fact]
     public async Task VideoThatDoesNotOpenTurnsTheSwitchOff()
     {
         var (pc, phone) = await Loopback.CreatePairAsync();
