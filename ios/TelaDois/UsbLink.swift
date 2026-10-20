@@ -13,13 +13,22 @@ final class UsbLink {
     /// Formato do vídeo do PC; `nil` = sem Segunda Tela (Modo Descanso).
     private(set) var videoConfig: LinkVideoConfig?
     /// Constante: o `@Observable` não acompanha `let`.
-    let renderer = VideoRenderer()
+    let renderer: VideoRenderer
+    /// Atraso da fila principal, para o `STATS` (diagnóstico).
+    private let lagProbe: MainLagProbe
 
     @ObservationIgnored private var listener: NWListener?
     @ObservationIgnored private var connection: NWConnection?
     @ObservationIgnored private var decoder = LinkFrameDecoder()
     @ObservationIgnored private var session = LinkSessionState(now: Date())
     @ObservationIgnored private var watchdog: Task<Void, Never>?
+    @ObservationIgnored private var statsTask: Task<Void, Never>?
+
+    init() {
+        let renderer = VideoRenderer()
+        self.renderer = renderer
+        lagProbe = MainLagProbe(stats: renderer.stats)
+    }
 
     func start() {
         guard listener == nil, let port = NWEndpoint.Port(rawValue: LinkProtocol.port) else { return }
@@ -87,6 +96,17 @@ final class UsbLink {
                 }
             }
         }
+        // Medidores (diagnóstico): com a Segunda Tela ativa, 1 STATS por segundo com o intervalo que passou.
+        statsTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, self.isCurrent(id) else { return }
+                let stats = self.renderer.stats.take()
+                if self.videoConfig != nil {
+                    self.send(LinkProtocol.stats(stats))
+                }
+            }
+        }
     }
 
     private func receiveNext(_ id: ObjectIdentifier) {
@@ -112,20 +132,28 @@ final class UsbLink {
             disconnect()
             return false
         }
+        let receivedAt = VideoStats.now()
+        let byteCount = data.count
+        renderer.stats.record { $0.addBytes(byteCount) }
         for frame in frames {
             switch frame.messageType {
             case .config:
                 if let config = LinkProtocol.parseConfig(frame) {
                     renderer.reset()
                     videoConfig = config
+                    lagProbe.start()
                 }
             case .video:
-                if let video = LinkProtocol.parseVideo(frame) { renderer.enqueue(video) }
+                if let video = LinkProtocol.parseVideo(frame) {
+                    renderer.stats.record { $0.frameReceived() }
+                    renderer.enqueue(video, receivedAt: receivedAt)
+                }
             case .videoEnd:
                 // O PC desligou a Segunda Tela (atalho ou bandeja): volta ao relógio, conexão continua.
                 if videoConfig != nil {
                     videoConfig = nil
                     renderer.reset()
+                    lagProbe.stop()
                 }
             default:
                 break
@@ -150,6 +178,9 @@ final class UsbLink {
     private func disconnect() {
         watchdog?.cancel()
         watchdog = nil
+        statsTask?.cancel()
+        statsTask = nil
+        lagProbe.stop()
         connection?.stateUpdateHandler = nil
         connection?.cancel()
         connection = nil

@@ -6,6 +6,8 @@ import UIKit
 /// Trabalha numa fila própria, fora da thread da interface. Em erro, limpa e espera a próxima imagem completa.
 final class VideoRenderer: @unchecked Sendable {
     let layer = AVSampleBufferDisplayLayer()
+    /// Medidores (diagnóstico): na tela, descartadas, falhas e o tempo de separar a mensagem até entregar ao decodificador.
+    let stats = VideoStats()
     private let queue = DispatchQueue(label: "teladois.video")
     // Só acessados na `queue`.
     private var format: CMVideoFormatDescription?
@@ -16,8 +18,9 @@ final class VideoRenderer: @unchecked Sendable {
         layer.backgroundColor = UIColor.black.cgColor
     }
 
-    func enqueue(_ frame: LinkVideoFrame) {
-        queue.async { self.handle(frame) }
+    /// `receivedAt`: `VideoStats.now()` de quando a mensagem foi separada do fluxo.
+    func enqueue(_ frame: LinkVideoFrame, receivedAt: UInt64) {
+        queue.async { self.handle(frame, receivedAt: receivedAt) }
     }
 
     func reset() {
@@ -29,11 +32,12 @@ final class VideoRenderer: @unchecked Sendable {
         }
     }
 
-    private func handle(_ frame: LinkVideoFrame) {
+    private func handle(_ frame: LinkVideoFrame, receivedAt: UInt64) {
         let renderer = layer.sampleBufferRenderer
         if renderer.status == .failed {
             renderer.flush()
             waitingForKeyframe = true
+            stats.record { $0.rendererFailed() }
         }
         let nals = H264Parser.nalUnits(in: frame.accessUnit)
         if let sps = nals.first(where: { $0.type == H264NALType.sps }),
@@ -41,11 +45,19 @@ final class VideoRenderer: @unchecked Sendable {
             format = Self.makeFormat(sps: sps.bytes, pps: pps.bytes) ?? format
         }
         if waitingForKeyframe {
-            guard frame.isKeyframe, H264Parser.containsIDR(nals) else { return }
+            guard frame.isKeyframe, H264Parser.containsIDR(nals) else {
+                stats.record { $0.frameDropped() }
+                return
+            }
             waitingForKeyframe = false
         }
-        guard let format, let sample = Self.makeSample(H264Parser.avcc(nals), format: format) else { return }
+        guard let format, let sample = Self.makeSample(H264Parser.avcc(nals), format: format) else {
+            stats.record { $0.frameDropped() }
+            return
+        }
         renderer.enqueue(sample)
+        let micros = VideoStats.micros(since: receivedAt)
+        stats.record { $0.frameEnqueued(receiveToEnqueueMicros: micros) }
     }
 
     private static func makeFormat(sps: [UInt8], pps: [UInt8]) -> CMVideoFormatDescription? {
