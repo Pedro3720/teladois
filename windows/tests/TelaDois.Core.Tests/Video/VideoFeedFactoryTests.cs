@@ -137,6 +137,58 @@ public class VideoFeedFactoryTests
     }
 
     [Fact]
+    public async Task AttachThatDoesNotReachTheDesktopSaysSoAndMirrors()
+    {
+        var monitor = new FakeVirtualMonitor { AttachTakes = false };
+        var log = new ConcurrentQueue<string>();
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [Main, Side], () => null, log.Enqueue, monitor)
+        {
+            OutputWait = TimeSpan.FromMilliseconds(200),
+        };
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Mirror, feed!.Kind);
+        Assert.Contains(log, line => line.Contains("não entrou no desktop", StringComparison.Ordinal) && line.Contains("persist", StringComparison.Ordinal));
+        Assert.DoesNotContain(log, line => line.Contains("fora do adaptador 0", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task WaitsForAVirtualOutputThatAppearsLateAndLogsHowLong()
+    {
+        var monitor = new FakeVirtualMonitor();
+        var log = new ConcurrentQueue<string>();
+        var since = System.Diagnostics.Stopwatch.StartNew();
+        // A saída do monitor virtual só aparece na DXGI 300 ms depois de ligar.
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(),
+            () => monitor.Attached && since.ElapsedMilliseconds >= 300 ? new[] { Main, Virtual } : new[] { Main }, () => null, log.Enqueue, monitor);
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Extend, feed!.Kind);
+        Assert.Contains(log, line => line.StartsWith($"monitor virtual {Virtual.DeviceName} na DXGI em ", StringComparison.Ordinal) && line.EndsWith(" ms (saída 2)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task FindsTheVirtualOutputIgnoringCase()
+    {
+        var monitor = new FakeVirtualMonitor();
+        var lower = Virtual with { DeviceName = Virtual.DeviceName.ToLowerInvariant() };
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => monitor.Attached ? new[] { Main, lower } : new[] { Main }, () => null, _ => { }, monitor)
+        {
+            OutputWait = TimeSpan.FromMilliseconds(500),
+        };
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Extend, feed!.Kind);
+    }
+
+    [Fact]
+    public void OutputWaitDefaultsToFiveSeconds() =>
+        Assert.Equal(TimeSpan.FromSeconds(5), new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [], () => null, _ => { }).OutputWait);
+
+    [Fact]
     public async Task LogsWhenTheDriverHasNoExactMode()
     {
         var monitor = new FakeVirtualMonitor { Mode = new DisplayModeInfo(2622, 1206, 60) };

@@ -16,6 +16,9 @@ internal sealed class FakeVirtualMonitor : IVirtualMonitor
     /// <summary>Com <c>true</c>, <see cref="Detach"/> anota a chamada mas o monitor continua no desktop (desligamento silencioso que falhou).</summary>
     public bool StaysAttached { get; set; }
 
+    /// <summary>Com <c>false</c>, <see cref="Attach"/> "dá certo" mas o monitor não entra no desktop (o Windows aceitou e ignorou).</summary>
+    public bool AttachTakes { get; set; } = true;
+
     public ConcurrentQueue<string> Detached { get; } = new();
 
     public bool Attached
@@ -32,7 +35,7 @@ internal sealed class FakeVirtualMonitor : IVirtualMonitor
         {
             throw AttachError;
         }
-        Attached = true;
+        Attached = AttachTakes;
         return (Device, Mode);
     }
 

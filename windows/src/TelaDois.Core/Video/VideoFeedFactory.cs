@@ -26,8 +26,8 @@ public sealed class VideoFeedFactory(
     /// <summary>O monitor virtual não respondeu: a Segunda Tela duplica um monitor existente.</summary>
     public event Action? DriverMissing;
 
-    /// <summary>Quanto esperar o monitor recém-ligado aparecer na DXGI.</summary>
-    public TimeSpan OutputWait { get; init; } = TimeSpan.FromSeconds(2);
+    /// <summary>Quanto esperar o monitor recém-ligado aparecer na DXGI (o IddCx pode levar segundos).</summary>
+    public TimeSpan OutputWait { get; init; } = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// A captura, ou <c>null</c> sem FFmpeg, sem monitor ou com qualquer falha (registrada no log): o vídeo nunca
@@ -115,13 +115,18 @@ public sealed class VideoFeedFactory(
             {
                 log($"o monitor virtual não tem {hello.Width}×{hello.Height}: usando {mode.Width}×{mode.Height}");
             }
+            var waited = Stopwatch.StartNew();
             var output = await WaitForOutputAsync(device, ct);
             if (output is null)
             {
-                log($"monitor virtual {device} fora do adaptador 0 da DXGI (o ddagrab não o enxerga): duplicando um monitor");
+                // Distingue os dois casos para o diagnóstico no aparelho: mexer no adaptador (<gpu> do XML) só ajuda no 2º.
+                log(monitor.IsAttached(device)
+                    ? $"monitor virtual {device} no desktop, mas fora do adaptador 0 da DXGI em {OutputWait.TotalSeconds:0} s (o ddagrab não o enxerga): duplicando um monitor"
+                    : $"o Windows aceitou ligar o monitor virtual {device}, mas ele não entrou no desktop em {OutputWait.TotalSeconds:0} s (testar gravar no registro, persist): duplicando um monitor");
                 VirtualMonitorFeed.DetachAndVerify(monitor, device, log);
                 return null;
             }
+            log($"monitor virtual {device} na DXGI em {waited.ElapsedMilliseconds} ms (saída {output.OutputIndex})");
             var profile = await probe.ChooseAsync(output.OutputIndex, ct);
             log($"estendendo para o iPhone: {device} ({output.Width}×{output.Height}) com {profile.Id}");
             return new VirtualMonitorFeed(Capture(probe, ffmpeg, profile, output), monitor, device, log);
@@ -138,7 +143,7 @@ public sealed class VideoFeedFactory(
         var waited = Stopwatch.StartNew();
         while (true)
         {
-            if (displays().FirstOrDefault(o => o.DeviceName == device) is { } output)
+            if (displays().FirstOrDefault(o => string.Equals(o.DeviceName, device, StringComparison.OrdinalIgnoreCase)) is { } output)
             {
                 return output;
             }
