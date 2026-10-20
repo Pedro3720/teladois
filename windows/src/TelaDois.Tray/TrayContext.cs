@@ -9,12 +9,6 @@ namespace TelaDois.Tray;
 /// <summary>Ícone na bandeja: estado do túnel, Modo monitor (Win+Shift+]) e o monitor duplicado sem driver.</summary>
 internal sealed class TrayContext : ApplicationContext
 {
-    /// <summary>
-    /// Ligar o monitor virtual gravando no registro do Windows. Falso até a validação no driver real (Task 2, Step 11
-    /// da Etapa 5b) mostrar que o Windows exige gravar.
-    /// </summary>
-    private const bool PersistVirtualMonitor = false;
-
     /// <summary>Ao sair, quanto esperar a sessão descartar o vídeo e mandar BYE.</summary>
     private static readonly TimeSpan ExitWait = TimeSpan.FromSeconds(6);
 
@@ -23,7 +17,7 @@ internal sealed class TrayContext : ApplicationContext
     private readonly CancellationTokenSource _cts = new();
     private readonly TraySettings _settings = TraySettings.Load();
     private readonly MonitorMode _monitor = new();
-    private readonly VirtualDisplay _virtualDisplay = new(new Win32DisplayApi(PersistVirtualMonitor), new DriverPipe());
+    private readonly VirtualDisplay _virtualDisplay = new(Win32DisplayApi.ForVirtualMonitor(), new DriverPipe());
     private readonly ToolStripMenuItem _monitorItem;
     private readonly SynchronizationContext _ui;
     private readonly Hotkey _hotkey;

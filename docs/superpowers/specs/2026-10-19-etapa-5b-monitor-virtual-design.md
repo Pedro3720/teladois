@@ -89,7 +89,7 @@ Ordem ao ligar: `CONFIG` e a 1ª imagem saem juntos (o `CONFIG` só é mandado q
 | Resolução do iPhone fora da lista do driver | Usa o modo com a proporção mais próxima; registra. O iPhone mostra com faixas pretas (`resizeAspect`). |
 | `ChangeDisplaySettingsEx` falha ao ligar | Registra o código; `Duplicando`. |
 | Monitor ligado mas fora do `DisplayCatalog` (outro adaptador DXGI) | Tira o monitor, registra "monitor virtual fora do adaptador 0", `Duplicando`. |
-| TelaDois fecha de repente / PC desliga com o monitor ligado | `DetachLeftover` ao abrir o TelaDois. A Tarefa 1 testa ligar **sem gravar no registro do Windows**, para o monitor não voltar sozinho depois de reiniciar; se não funcionar assim, grava e confia no `DetachLeftover`. |
+| TelaDois fecha de repente / PC desliga com o monitor ligado | `DetachLeftover` ao abrir o TelaDois. Ligar **grava no registro do Windows** (`Win32DisplayApi.ForVirtualMonitor`): medido no driver 25.7.23 em 2026-10-20, sem gravar o Windows recusa ligar o monitor que está fora do desktop (`DISP_CHANGE_FAILED`, -1). Desligado assim, ele continua desligado depois de reiniciar; o `DetachLeftover` cobre o que sobrar ligado. |
 | Atalho já registrado por outro programa | Balão "atalho Win+Shift+] em uso"; o item da bandeja continua valendo. |
 | Cabo tirado e posto rápido / atalho apertado duas vezes | `MonitorMode` faz uma operação por vez; o ligar espera o desligar terminar. |
 | Usuário desconecta o monitor virtual nas Configurações | A captura falha; o `MonitorMode` vê que o monitor saiu do desktop e trata como desligado (`VIDEO_END`, relógio no iPhone). |

@@ -21,7 +21,7 @@ public class VirtualDisplayLocalTests(ITestOutputHelper output)
             output.WriteLine($"PULADO: teste com o driver real só roda com {LocalDriverGate.Variable}=1 (ele liga e desliga um monitor de verdade).");
             return;
         }
-        var display = new VirtualDisplay(new Win32DisplayApi(persist: false), new DriverPipe());
+        var display = new VirtualDisplay(Win32DisplayApi.ForVirtualMonitor(), new DriverPipe()); // persist: true, como a bandeja
         if (!await display.IsInstalledAsync(CancellationToken.None))
         {
             output.WriteLine("PULADO: o Virtual Display Driver não está instalado nesta máquina.");

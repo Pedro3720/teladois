@@ -8,6 +8,15 @@ namespace TelaDois.Core.Display;
 /// </summary>
 public sealed class Win32DisplayApi(bool persist) : IDisplayApi
 {
+    /// <summary>
+    /// A do monitor virtual: grava no registro. Medido no Virtual Display Driver 25.7.23 (2026-10-20): sem gravar,
+    /// ligar o monitor que está fora do desktop falha com DISP_CHANGE_FAILED (-1); gravando, ele entra em Estender e
+    /// aparece na DXGI na hora. Efeito bom: desligado assim, continua desligado depois de reiniciar o Windows.
+    /// </summary>
+    public static Win32DisplayApi ForVirtualMonitor() => new(persist: true);
+
+    public bool Persist => persist;
+
     private const int AttachedToDesktop = 0x1;
     private const int PrimaryDevice = 0x4;
     private const int DmPosition = 0x20;

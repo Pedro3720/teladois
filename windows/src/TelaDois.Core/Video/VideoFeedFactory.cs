@@ -123,7 +123,7 @@ public sealed class VideoFeedFactory(
                 // Distingue os dois casos para o diagnóstico no aparelho: mexer no adaptador (<gpu> do XML) só ajuda no 2º.
                 log(monitor.IsAttached(device)
                     ? $"monitor virtual {device} no desktop, mas fora do adaptador 0 da DXGI em {OutputWait.TotalSeconds:0} s (o ddagrab não o enxerga): duplicando um monitor"
-                    : $"o Windows aceitou ligar o monitor virtual {device}, mas ele não entrou no desktop em {OutputWait.TotalSeconds:0} s (testar gravar no registro, persist): duplicando um monitor");
+                    : $"o Windows aceitou ligar o monitor virtual {device}, mas ele não entrou no desktop em {OutputWait.TotalSeconds:0} s (mesmo gravando no registro): duplicando um monitor");
                 VirtualMonitorFeed.DetachAndVerify(monitor, device, log);
                 return null;
             }

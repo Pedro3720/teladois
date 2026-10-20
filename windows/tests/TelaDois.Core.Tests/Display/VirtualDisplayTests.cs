@@ -159,4 +159,8 @@ public class VirtualDisplayTests
 
     [Fact]
     public void ChooseModeWithoutModesIsNull() => Assert.Null(VirtualDisplay.ChooseMode([], 2556, 1179));
+
+    /// <summary>Medido no driver 25.7.23: sem gravar no registro, ligar falha com DISP_CHANGE_FAILED (-1).</summary>
+    [Fact]
+    public void TheVirtualMonitorApiWritesTheRegistry() => Assert.True(Win32DisplayApi.ForVirtualMonitor().Persist);
 }

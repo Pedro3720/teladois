@@ -162,7 +162,7 @@ public class VideoFeedFactoryTests
         await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
 
         Assert.Equal(VideoKind.Mirror, feed!.Kind);
-        Assert.Contains(log, line => line.Contains("não entrou no desktop", StringComparison.Ordinal) && line.Contains("persist", StringComparison.Ordinal));
+        Assert.Contains(log, line => line.Contains("não entrou no desktop", StringComparison.Ordinal) && line.Contains("gravando no registro", StringComparison.Ordinal));
         Assert.DoesNotContain(log, line => line.Contains("fora do adaptador 0", StringComparison.Ordinal));
     }
 
