@@ -33,6 +33,11 @@ final class LinkProtocolTests: XCTestCase {
         XCTAssertEqual(LinkFrame(type: 8).messageType, .videoEnd)
     }
 
+    func testMessageTypesKeepTheBytesOfTheCSharpSide() {
+        let types: [LinkMessageType] = [.hello, .config, .video, .keyframeRequest, .ping, .pong, .bye, .videoEnd]
+        XCTAssertEqual(types.map(\.rawValue), [1, 2, 3, 4, 5, 6, 7, 8])
+    }
+
     func testParsesConfigAndVideo() {
         XCTAssertEqual(
             LinkProtocol.parseConfig(LinkProtocol.config(width: 2556, height: 1179, fps: 30)),

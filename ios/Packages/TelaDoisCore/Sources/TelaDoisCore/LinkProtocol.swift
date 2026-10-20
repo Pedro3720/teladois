@@ -1,8 +1,16 @@
 import Foundation
 
-/// Tipos de mensagem do protocolo PC ↔ iPhone (spec §3.4).
+/// Tipos de mensagem do protocolo PC ↔ iPhone (spec §3.4). Valores explícitos, iguais aos do `LinkMessageType` em C#:
+/// reordenar os casos não pode mudar o byte que vai no cabo.
 public enum LinkMessageType: UInt8, Sendable {
-    case hello = 1, config, video, keyframeRequest, ping, pong, bye, videoEnd
+    case hello = 1
+    case config = 2
+    case video = 3
+    case keyframeRequest = 4
+    case ping = 5
+    case pong = 6
+    case bye = 7
+    case videoEnd = 8
 }
 
 /// Uma mensagem: `[tipo: 1 byte][tamanho: 4 bytes big-endian][dados]`.
