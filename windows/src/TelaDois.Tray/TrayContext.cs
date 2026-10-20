@@ -15,6 +15,9 @@ internal sealed class TrayContext : ApplicationContext
     /// </summary>
     private const bool PersistVirtualMonitor = false;
 
+    /// <summary>Ao sair, quanto esperar a sessão descartar o vídeo e mandar BYE.</summary>
+    private static readonly TimeSpan ExitWait = TimeSpan.FromSeconds(6);
+
     private readonly NotifyIcon _icon;
     private readonly FileLog _log = FileLog.Default();
     private readonly CancellationTokenSource _cts = new();
@@ -228,12 +231,16 @@ internal sealed class TrayContext : ApplicationContext
 
     protected override void ExitThreadCore()
     {
-        // Ao sair, a sessão descarta o vídeo e o monitor virtual sai do desktop: espera um pouco por isso.
+        // Ao sair, a sessão descarta o vídeo e o monitor virtual sai do desktop: espera por isso. 6 s cobre o limite do
+        // descarte dos feeds na sessão (5 s, com o FFmpeg tendo até 3 s para sair) mais o BYE (0,5 s).
         _closing = true;
         _cts.Cancel();
         try
         {
-            _running.Wait(TimeSpan.FromSeconds(3));
+            if (!_running.Wait(ExitWait))
+            {
+                _log.Write($"a sessão não terminou em {ExitWait.TotalSeconds:0} s ao sair: desligando o monitor virtual daqui");
+            }
         }
         catch (AggregateException)
         {
