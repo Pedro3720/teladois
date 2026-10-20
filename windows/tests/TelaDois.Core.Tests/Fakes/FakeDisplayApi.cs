@@ -26,8 +26,12 @@ internal sealed class FakeDisplayApi : IDisplayApi
         Applied.Add((deviceName, x, y, width, height, frequency));
         if (Result == 0)
         {
+            // Nome desconhecido: o Windows de verdade também não tem o que mudar (e o falso não pode estourar).
             var index = DeviceList.FindIndex(d => d.DeviceName == deviceName);
-            DeviceList[index] = DeviceList[index] with { AttachedToDesktop = width > 0 };
+            if (index >= 0)
+            {
+                DeviceList[index] = DeviceList[index] with { AttachedToDesktop = width > 0 };
+            }
         }
         return Result;
     }

@@ -8,7 +8,13 @@ namespace TelaDois.Core.Tests;
 
 public class LinkSessionTests
 {
+    // Fast: PINGs rápidos e tempo-limite curto, só para os testes que provam o próprio tempo-limite (e a ausência de
+    // silêncio maior que ele). Patient: PINGs igualmente rápidos, mas um tempo-limite que uma pausa do agendador (CI com
+    // 2 núcleos, testes em paralelo) não alcança. Com o tempo-limite de 400 ms, uma pausa dessas fazia a sessão acabar
+    // sozinha (Timeout + BYE) e o teste, que não fecha o socket, ficava lendo até o limite de 10 s e falhava com
+    // OperationCanceledException sem dizer por quê.
     private static readonly LinkSessionOptions Fast = new(TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(400));
+    private static readonly LinkSessionOptions Patient = new(TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(30));
 
     [Fact]
     public async Task ReportsHelloThenRoundTrip()
@@ -28,7 +34,7 @@ public class LinkSessionTests
             {
                 measured.TrySetResult();
             }
-        }, Fast, cts.Token);
+        }, Patient, cts.Token);
 
         await measured.Task.WaitAsync(cts.Token);
         Assert.True(statuses.TryPeek(out var first));
@@ -44,7 +50,7 @@ public class LinkSessionTests
         await using var _pc = pc;
         await using var _phone = phone;
         await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode().Concat(LinkMessages.Bye().Encode()).ToArray());
-        Assert.Equal(LinkEndReason.Bye, await LinkSession.RunAsync(pc, _ => { }, Fast, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(LinkEndReason.Bye, await LinkSession.RunAsync(pc, _ => { }, Patient, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)));
     }
 
     [Fact]
@@ -54,7 +60,7 @@ public class LinkSessionTests
         await using var _pc = pc;
         await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode());
         await phone.DisposeAsync();
-        Assert.Equal(LinkEndReason.Closed, await LinkSession.RunAsync(pc, _ => { }, Fast, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(LinkEndReason.Closed, await LinkSession.RunAsync(pc, _ => { }, Patient, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)));
     }
 
     [Fact]
@@ -84,7 +90,7 @@ public class LinkSessionTests
         await using var _pc = pc;
         await using var _phone = phone;
         await phone.WriteAsync(LinkMessages.Ping(1).Encode());
-        await Assert.ThrowsAsync<InvalidDataException>(() => LinkSession.RunAsync(pc, _ => { }, Fast, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidDataException>(() => LinkSession.RunAsync(pc, _ => { }, Patient, CancellationToken.None));
     }
 
     private sealed class FixedFeed(VideoConfig config, IEnumerable<AccessUnit> frames) : IVideoFeed
@@ -128,7 +134,7 @@ public class LinkSessionTests
             {
                 withVideo.TrySetResult(s);
             }
-        }, Fast, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(feed));
+        }, Patient, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(feed));
 
         await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
         var reader = new LinkFrameReader(phone);
@@ -159,7 +165,7 @@ public class LinkSessionTests
         await using var _pc = pc;
         await using var _phone = phone;
         await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode().Concat(LinkMessages.Bye().Encode()).ToArray());
-        Assert.Equal(LinkEndReason.Bye, await LinkSession.RunAsync(pc, _ => { }, Fast, CancellationToken.None, (_, _) => Task.FromResult<IVideoFeed?>(null)).WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(LinkEndReason.Bye, await LinkSession.RunAsync(pc, _ => { }, Patient, CancellationToken.None, (_, _) => Task.FromResult<IVideoFeed?>(null)).WaitAsync(TimeSpan.FromSeconds(5)));
     }
 
     /// <summary>Imagens do tamanho dado, sem fim e sem espera.</summary>
@@ -193,6 +199,11 @@ public class LinkSessionTests
             var frame = await reader.NextAsync(ct) ?? throw new IOException("o PC fechou o socket");
             arrivals?.Add(Environment.TickCount64);
             seen.Add(frame.MessageType ?? throw new InvalidDataException($"tipo desconhecido: {frame.Type}"));
+            if (frame.MessageType == LinkMessageType.Bye && !done())
+            {
+                // A sessão acabou antes do esperado; sem isto o teste esperaria o socket (que ninguém fecha) até o limite.
+                throw new InvalidOperationException($"o PC encerrou a sessão (BYE) antes do esperado; recebido: {string.Join(", ", seen)}");
+            }
             if (frame.MessageType == LinkMessageType.Ping && LinkMessages.TryReadTimestamp(frame, out var sent))
             {
                 await phone.WriteAsync(LinkMessages.Pong(sent).Encode(), ct);
@@ -218,7 +229,7 @@ public class LinkSessionTests
             {
                 Interlocked.Increment(ref videoStatuses);
             }
-        }, Fast, cts.Token, async (_, token) =>
+        }, Patient, cts.Token, async (_, token) =>
         {
             await gate.Task.WaitAsync(token);
             return feed;
@@ -260,7 +271,7 @@ public class LinkSessionTests
         await using var _phone = phone;
         var opening = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var feed = new FixedFeed(new VideoConfig(1366, 768, 60), []);
-        var run = LinkSession.RunAsync(pc, _ => { }, Fast, CancellationToken.None, async (_, token) =>
+        var run = LinkSession.RunAsync(pc, _ => { }, Patient, CancellationToken.None, async (_, token) =>
         {
             opening.TrySetResult();
             try
@@ -294,7 +305,7 @@ public class LinkSessionTests
             {
                 measured.TrySetResult(s);
             }
-        }, Fast, cts.Token, (_, _) => throw new InvalidOperationException("nenhuma compressão H.264 funcionou neste PC"));
+        }, Patient, cts.Token, (_, _) => throw new InvalidOperationException("nenhuma compressão H.264 funcionou neste PC"));
 
         await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
         var seen = new List<LinkMessageType>();
@@ -314,7 +325,7 @@ public class LinkSessionTests
         await using var _phone = phone;
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var feed = new FixedFeed(new VideoConfig(1366, 768, 60), [new AccessUnit([0, 0, 0, 1, 9, 0xF0, 0, 0, 0, 1, 0x65], true)]);
-        var run = LinkSession.RunAsync(pc, _ => { }, Fast, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(feed));
+        var run = LinkSession.RunAsync(pc, _ => { }, Patient, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(feed));
 
         await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
         var reader = new LinkFrameReader(phone);
@@ -405,7 +416,7 @@ public class LinkSessionTests
         await using var _phone = phone;
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var feed = new GatedFeed(new VideoConfig(1366, 768, 60));
-        var run = LinkSession.RunAsync(pc, _ => { }, Fast, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(feed));
+        var run = LinkSession.RunAsync(pc, _ => { }, Patient, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(feed));
 
         await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
         var reader = new LinkFrameReader(phone);
@@ -435,7 +446,7 @@ public class LinkSessionTests
         mode.SessionStarted();
         var feeds = new ConcurrentQueue<GatedFeed>();
         var statuses = new ConcurrentQueue<LinkStatus>();
-        var run = LinkSession.RunAsync(pc, statuses.Enqueue, Fast, cts.Token, (_, _) =>
+        var run = LinkSession.RunAsync(pc, statuses.Enqueue, Patient, cts.Token, (_, _) =>
         {
             var feed = new GatedFeed(new VideoConfig(2556, 1179, 60), VideoKind.Extend);
             feed.Release.SetResult();
@@ -478,7 +489,7 @@ public class LinkSessionTests
         var mode = new MonitorMode();
         mode.SessionStarted();
         var feed = new OneFrameThenStopsFeed();
-        var run = LinkSession.RunAsync(pc, _ => { }, Fast, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(feed), mode);
+        var run = LinkSession.RunAsync(pc, _ => { }, Patient, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(feed), mode);
 
         await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
         var reader = new LinkFrameReader(phone);
@@ -505,7 +516,7 @@ public class LinkSessionTests
         var mode = new MonitorMode();
         mode.SessionStarted();
         var feed = new GatedFeed(new VideoConfig(1366, 768, 60)); // nunca libera a 1ª imagem
-        var run = LinkSession.RunAsync(pc, _ => { }, Fast, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(feed), mode);
+        var run = LinkSession.RunAsync(pc, _ => { }, Patient, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(feed), mode);
 
         await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
         var reader = new LinkFrameReader(phone);
@@ -529,7 +540,7 @@ public class LinkSessionTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var mode = new MonitorMode();
         mode.SessionStarted();
-        var run = LinkSession.RunAsync(pc, _ => { }, Fast, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(null), mode);
+        var run = LinkSession.RunAsync(pc, _ => { }, Patient, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(null), mode);
 
         await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
         var seen = new List<LinkMessageType>();
@@ -550,7 +561,7 @@ public class LinkSessionTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var mode = new MonitorMode();
         mode.SessionStarted();
-        var run = LinkSession.RunAsync(pc, _ => { }, Fast, cts.Token, (_, _) => throw new InvalidOperationException("nenhuma compressão H.264 funcionou neste PC"), mode);
+        var run = LinkSession.RunAsync(pc, _ => { }, Patient, cts.Token, (_, _) => throw new InvalidOperationException("nenhuma compressão H.264 funcionou neste PC"), mode);
 
         await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
         var seen = new List<LinkMessageType>();
@@ -698,7 +709,7 @@ public class LinkSessionTests
         var mode = new MonitorMode();
         mode.SessionStarted();
         var feed = new OneFrameThenStopsFeed((Exception)Activator.CreateInstance(failure, "a captura quebrou")!);
-        var run = LinkSession.RunAsync(pc, _ => { }, Fast, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(feed), mode);
+        var run = LinkSession.RunAsync(pc, _ => { }, Patient, cts.Token, (_, _) => Task.FromResult<IVideoFeed?>(feed), mode);
 
         await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
         var reader = new LinkFrameReader(phone);

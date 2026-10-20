@@ -23,7 +23,12 @@ public interface IDisplayApi
 }
 
 public sealed class DisplayChangeException(int code, string action)
-    : Exception($"o Windows não deixou {action} o monitor virtual (código {code})")
+    : Exception(code == DispChangeRestart
+        ? $"o Windows pede reinício para {action} o monitor virtual"
+        : $"o Windows não deixou {action} o monitor virtual (código {code})")
 {
+    /// <summary><c>DISP_CHANGE_RESTART</c>: a mudança só vale depois de reiniciar o Windows.</summary>
+    public const int DispChangeRestart = 1;
+
     public int Code { get; } = code;
 }

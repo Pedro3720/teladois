@@ -1,19 +1,31 @@
 using TelaDois.Core.Display;
 using TelaDois.Core.Video;
+using Xunit.Abstractions;
 
 namespace TelaDois.Core.Tests.Display;
 
-/// <summary>Com o driver real (pisca o monitor extra por ~1 s). Retorna cedo onde o driver não está instalado (CI).</summary>
+/// <summary>
+/// Com o driver real: pisca o monitor extra por ~1 s e, no fim, desliga o monitor do driver. Por isso <b>só roda quando
+/// pedido</b>. Num <c>dotnet test</c> comum (e no CI) retorna na hora. Para rodar, num PC com o driver instalado:
+/// <c>$env:TELADOIS_LOCAL_DRIVER_TEST='1'; dotnet test windows/TelaDois.sln --filter FullyQualifiedName~VirtualDisplayLocalTests</c>
+/// (o xUnit 2.9.3 não tem <c>Assert.Skip</c>: o teste passa e avisa na saída que foi pulado).
+/// </summary>
 [Trait("Category", "Local")]
-public class VirtualDisplayLocalTests
+public class VirtualDisplayLocalTests(ITestOutputHelper output)
 {
     [Fact]
     public async Task RealDriverMonitorAttachesShowsUpInDxgiAndDetaches()
     {
+        if (!LocalDriverGate.IsEnabled())
+        {
+            output.WriteLine($"PULADO: teste com o driver real só roda com {LocalDriverGate.Variable}=1 (ele liga e desliga um monitor de verdade).");
+            return;
+        }
         var display = new VirtualDisplay(new Win32DisplayApi(persist: false), new DriverPipe());
         if (!await display.IsInstalledAsync(CancellationToken.None))
         {
-            return; // sem o Virtual Display Driver nesta máquina
+            output.WriteLine("PULADO: o Virtual Display Driver não está instalado nesta máquina.");
+            return;
         }
         var device = display.Find();
         Assert.NotNull(device); // o nome do adaptador confere com VirtualDisplay.AdapterName

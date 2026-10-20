@@ -24,18 +24,32 @@ public sealed class VirtualDisplay(IDisplayApi api, IDriverPipe pipe) : IVirtual
     {
         var device = Find() ?? throw new InvalidOperationException("o monitor do Virtual Display Driver não aparece no Windows");
         var mode = ChooseMode(api.Modes(device), width, height) ?? throw new InvalidOperationException("o monitor virtual não informou nenhuma resolução");
-        var right = api.Devices()
-            .Where(d => d.AttachedToDesktop && d.DeviceName != device)
+        // Encosta no monitor mais à direita, também na altura (o topo dele, não sempre 0).
+        var rightmost = api.Devices()
+            .Where(d => d.AttachedToDesktop && !SameName(d.DeviceName, device))
             .Select(d => api.Bounds(d.DeviceName))
             .Where(b => b.HasValue)
-            .Select(b => b!.Value.X + b.Value.Width)
-            .DefaultIfEmpty(0)
-            .Max();
-        Check(api.Apply(device, right, 0, mode.Width, mode.Height, mode.Frequency), "ligar");
+            .Select(b => b!.Value)
+            .OrderByDescending(b => b.X + b.Width)
+            .Cast<DisplayBounds?>()
+            .FirstOrDefault();
+        var x = rightmost is { } r ? r.X + r.Width : 0;
+        var y = rightmost?.Y ?? 0;
+        Check(ApplyToDriverMonitor(device, x, y, mode.Width, mode.Height, mode.Frequency), "ligar");
         return (device, mode);
     }
 
-    public void Detach(string deviceName) => Check(api.Apply(deviceName, 0, 0, 0, 0, 0), "desligar");
+    /// <summary>
+    /// Tira do desktop o monitor do driver. Qualquer outro nome (monitor físico, nome desconhecido, vazio) é ignorado:
+    /// o TelaDois nunca desliga um monitor que não é o virtual.
+    /// </summary>
+    public void Detach(string deviceName)
+    {
+        if (FindDriverDevice(deviceName) is { } device)
+        {
+            Check(ApplyToDriverMonitor(device.DeviceName, 0, 0, 0, 0, 0), "desligar");
+        }
+    }
 
     /// <summary>Ao abrir o TelaDois: tira do desktop o monitor virtual que sobrou ligado. Devolve qual, ou <c>null</c>.</summary>
     public string? DetachLeftover()
@@ -65,6 +79,17 @@ public sealed class VirtualDisplay(IDisplayApi api, IDriverPipe pipe) : IVirtual
             .ThenBy(m => Math.Abs(m.Frequency - Fps))
             .First();
     }
+
+    // Único caminho até o Apply: só o monitor do driver pode ser mudado (confere de novo, mesmo para quem já o achou).
+    private int ApplyToDriverMonitor(string deviceName, int x, int y, int width, int height, int frequency) =>
+        FindDriverDevice(deviceName) is { } device
+            ? api.Apply(device.DeviceName, x, y, width, height, frequency)
+            : throw new InvalidOperationException($"{deviceName} não é o monitor do Virtual Display Driver");
+
+    private DisplayDeviceInfo? FindDriverDevice(string deviceName) =>
+        api.Devices().FirstOrDefault(d => SameName(d.DeviceName, deviceName) && IsVirtual(d));
+
+    private static bool SameName(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
     private static bool IsVirtual(DisplayDeviceInfo device) =>
         device.Description.Contains(AdapterName, StringComparison.OrdinalIgnoreCase);
