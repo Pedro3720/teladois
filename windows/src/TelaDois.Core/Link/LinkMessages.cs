@@ -110,6 +110,20 @@ public static class LinkMessages
     /// <summary>O PC parou a Segunda Tela sem desconectar: o iPhone volta ao relógio.</summary>
     public static LinkFrame VideoEnd() => new(LinkMessageType.VideoEnd);
 
+    /// <summary>Apaga (<paramref name="dark"/> = true) ou acende a tela do iPhone.</summary>
+    public static LinkFrame Screen(bool dark) => new(LinkMessageType.Screen, [dark ? (byte)1 : (byte)0]);
+
+    public static bool TryParseScreen(LinkFrame frame, out bool dark)
+    {
+        dark = false;
+        if (frame.MessageType != LinkMessageType.Screen || frame.Payload.Length != 1)
+        {
+            return false;
+        }
+        dark = frame.Payload[0] != 0;
+        return true;
+    }
+
     public static LinkFrame Stats(LinkStats stats)
     {
         uint[] fields =

@@ -30,6 +30,25 @@ public class LinkProtocolTests
         Assert.Equal(LinkMessageType.VideoEnd, new LinkFrame(8, []).MessageType);
 
     [Fact]
+    public void ScreenMatchesGoldenBytes()
+    {
+        Assert.Equal(Convert.FromHexString("0A0000000101"), LinkMessages.Screen(true).Encode());
+        Assert.Equal(Convert.FromHexString("0A0000000100"), LinkMessages.Screen(false).Encode());
+    }
+
+    [Fact]
+    public void ScreenParsesAndRejectsWrongLength()
+    {
+        Assert.True(LinkMessages.TryParseScreen(new LinkFrame(10, [1]), out var dark));
+        Assert.True(dark);
+        Assert.True(LinkMessages.TryParseScreen(new LinkFrame(10, [0]), out dark));
+        Assert.False(dark);
+        Assert.False(LinkMessages.TryParseScreen(new LinkFrame(10, []), out _));
+        Assert.False(LinkMessages.TryParseScreen(new LinkFrame(10, [1, 0]), out _));
+        Assert.Equal(LinkMessageType.Screen, new LinkFrame(10, [0]).MessageType);
+    }
+
+    [Fact]
     public void StatsMatchesGoldenBytes()
     {
         Assert.Equal(

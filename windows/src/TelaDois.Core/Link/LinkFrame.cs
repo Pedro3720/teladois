@@ -15,6 +15,8 @@ public enum LinkMessageType : byte
     VideoEnd = 8,
     /// <summary>iPhone → PC, 1 vez por segundo com a Segunda Tela ligada: medidores do último intervalo.</summary>
     Stats = 9,
+    /// <summary>PC → iPhone: 1 = apagar a tela do iPhone (preto, brilho 0), 0 = acender.</summary>
+    Screen = 10,
 }
 
 /// <summary>Uma mensagem: <c>[tipo: 1 byte][tamanho: 4 bytes big-endian][dados]</c>.</summary>

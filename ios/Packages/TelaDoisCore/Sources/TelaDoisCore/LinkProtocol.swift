@@ -13,6 +13,8 @@ public enum LinkMessageType: UInt8, Sendable {
     case videoEnd = 8
     /// iPhone → PC, 1 vez por segundo com a Segunda Tela ligada: medidores do último intervalo.
     case stats = 9
+    /// PC → iPhone: 1 = apagar a tela do iPhone (preto, brilho 0), 0 = acender.
+    case screen = 10
 }
 
 /// Uma mensagem: `[tipo: 1 byte][tamanho: 4 bytes big-endian][dados]`.
@@ -179,6 +181,15 @@ public enum LinkProtocol {
 
     /// O PC parou a Segunda Tela sem desconectar: volta ao relógio.
     public static func videoEnd() -> LinkFrame { LinkFrame(.videoEnd) }
+
+    /// Apaga (`dark` = true) ou acende a tela do iPhone.
+    public static func screen(dark: Bool) -> LinkFrame { LinkFrame(.screen, payload: [dark ? 1 : 0]) }
+
+    /// `true` = apagar, `false` = acender; `nil` se o tamanho dos dados não é 1.
+    public static func parseScreen(_ frame: LinkFrame) -> Bool? {
+        guard frame.messageType == .screen, frame.payload.count == 1 else { return nil }
+        return frame.payload[0] != 0
+    }
 
     public static func stats(_ stats: LinkStats) -> LinkFrame {
         LinkFrame(.stats, payload: stats.fields.flatMap { bigEndianBytes($0) })
