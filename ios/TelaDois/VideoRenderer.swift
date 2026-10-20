@@ -24,7 +24,8 @@ final class VideoRenderer: @unchecked Sendable {
         queue.async {
             self.format = nil
             self.waitingForKeyframe = true
-            self.layer.sampleBufferRenderer.flush()
+            // Tira também a imagem na tela: ao religar, não aparece a última imagem da vez anterior.
+            self.layer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
         }
     }
 

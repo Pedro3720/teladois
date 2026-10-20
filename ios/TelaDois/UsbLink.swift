@@ -121,6 +121,12 @@ final class UsbLink {
                 }
             case .video:
                 if let video = LinkProtocol.parseVideo(frame) { renderer.enqueue(video) }
+            case .videoEnd:
+                // O PC desligou a Segunda Tela (atalho ou bandeja): volta ao relógio, conexão continua.
+                if videoConfig != nil {
+                    videoConfig = nil
+                    renderer.reset()
+                }
             default:
                 break
             }
