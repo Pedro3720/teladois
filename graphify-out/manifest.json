@@ -498,9 +498,9 @@
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Video/FfmpegArguments.cs": {
-    "mtime": 1792588469.297012,
-    "seen": 1792600635.0331028,
-    "ast_hash": "dcd97a47a58bf3477cf586d1c8aad216",
+    "mtime": 1792616328.9829156,
+    "seen": 1792616535.8037257,
+    "ast_hash": "19d1f4d2cdc15c77a57991eff444cc34",
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Video/FfmpegCapture.cs": {
@@ -564,9 +564,9 @@
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/Video/FfmpegArgumentsTests.cs": {
-    "mtime": 1792601255.636777,
-    "seen": 1792613798.6667228,
-    "ast_hash": "781842ecca249801087bf88b97ba9590",
+    "mtime": 1792616281.8663404,
+    "seen": 1792616535.803826,
+    "ast_hash": "7a0ce31751dcfd53b216340edb1f4bfc",
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/Video/FfmpegCaptureTests.cs": {
@@ -858,9 +858,9 @@
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Video/EncodeSettings.cs": {
-    "mtime": 1792588318.512387,
-    "seen": 1792600635.033096,
-    "ast_hash": "3e3ea20f3f81ca2ed4cd11fc3758963b",
+    "mtime": 1792616300.6225305,
+    "seen": 1792616535.8037176,
+    "ast_hash": "00338a8bed34f38ed42dd5f047480e78",
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.LatencyBench.Tests/BenchLayoutTests.cs": {
@@ -882,9 +882,9 @@
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.LatencyBench.Tests/BenchVariantsTests.cs": {
-    "mtime": 1792614341.2027378,
-    "seen": 1792614592.3795574,
-    "ast_hash": "94f88430fcbbed01fdb0c2f59e3ffb19",
+    "mtime": 1792616390.092932,
+    "seen": 1792616535.8038518,
+    "ast_hash": "594f31636e1236a086436a3ce3cb15c9",
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.LatencyBench.Tests/LatencyMatcherTests.cs": {
@@ -942,9 +942,9 @@
     "semantic_hash": ""
   },
   "windows/tools/TelaDois.LatencyBench/BenchVariants.cs": {
-    "mtime": 1792614429.7911189,
-    "seen": 1792614592.3796034,
-    "ast_hash": "a90e7d483104de2f7f6b9b6798df5dff",
+    "mtime": 1792616488.1459754,
+    "seen": 1792616535.803875,
+    "ast_hash": "6282826ea9c5476f675ba153243384b1",
     "semantic_hash": ""
   },
   "windows/tools/TelaDois.LatencyBench/LatencyMatcher.cs": {
@@ -996,9 +996,9 @@
     "semantic_hash": ""
   },
   "docs/medicoes/2026-10-21-bancada-5d.md": {
-    "mtime": 1792614531.4559166,
-    "seen": 1792614592.3796985,
-    "ast_hash": "f5d595a7e1c3521217d1a9c3077f2f85",
+    "mtime": 1792615659.0952773,
+    "seen": 1792616535.8039317,
+    "ast_hash": "b0bfb68e7acee8b910a0c4a2c691bf70",
     "semantic_hash": ""
   },
   "docs/superpowers/specs/2026-10-21-etapa-5d-atraso-e-engasgos-design.md": {
