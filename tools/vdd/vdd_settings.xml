@@ -43,6 +43,32 @@
             <height>1080</height>
             <refresh_rate>60</refresh_rate>
         </resolution>
+        <!-- Etapa 5d: as mesmas resoluções ÷ 1,75 (par mais próximo), para o monitor do iPhone em escala 100%. -->
+        <resolution>
+            <width>1460</width>
+            <height>674</height>
+            <refresh_rate>60</refresh_rate>
+        </resolution>
+        <resolution>
+            <width>1598</width>
+            <height>738</height>
+            <refresh_rate>60</refresh_rate>
+        </resolution>
+        <resolution>
+            <width>1498</width>
+            <height>690</height>
+            <refresh_rate>60</refresh_rate>
+        </resolution>
+        <resolution>
+            <width>1638</width>
+            <height>754</height>
+            <refresh_rate>60</refresh_rate>
+        </resolution>
+        <resolution>
+            <width>1564</width>
+            <height>720</height>
+            <refresh_rate>60</refresh_rate>
+        </resolution>
     </resolutions>
     <options>
         <CustomEdid>false</CustomEdid>
