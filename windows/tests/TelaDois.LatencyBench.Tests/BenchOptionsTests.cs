@@ -40,6 +40,33 @@ public class BenchOptionsTests
     }
 
     [Fact]
+    public void TheVirtualMonitorDefaultsToTheAppSize()
+    {
+        var options = BenchOptions.Parse(["--out", "x"]);
+
+        // Igual ao app (Etapa 5d): iPhone 2556×1179 ÷ 1,75 = 1460×674, em escala 100%.
+        Assert.Equal((1460, 674), options.MonitorSize);
+        Assert.Equal(TelaDois.Core.Display.VirtualMonitorSize.For(2556, 1179), options.MonitorSize);
+    }
+
+    [Theory]
+    [InlineData("2556x1179", 2556, 1179)]
+    [InlineData("1920×886", 1920, 886)]
+    [InlineData("1460X674", 1460, 674)]
+    public void MonitorSizeAcceptsWidthByHeight(string value, int width, int height)
+    {
+        Assert.Equal((width, height), BenchOptions.Parse(["--monitor-size", value, "--out", "x"]).MonitorSize);
+    }
+
+    [Fact]
+    public void MonitorSizeOnlyAppliesToTheVirtualMonitor()
+    {
+        var error = Assert.Throws<ArgumentException>(() =>
+            BenchOptions.Parse(["--monitor", @"\\.\DISPLAY1", "--monitor-size", "1460x674", "--out", "x"]));
+        Assert.Contains("--monitor-size", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EachScenarioHasItsOwnDefaultDuration()
     {
         using var repo = new TempRepo();
@@ -130,6 +157,11 @@ public class BenchOptionsTests
     [InlineData("--variants", "")]
     [InlineData("--seed", "-1")]
     [InlineData("--seed", "abc")]
+    [InlineData("--monitor-size", "1460")]
+    [InlineData("--monitor-size", "abcxdef")]
+    [InlineData("--monitor-size", "0x674")]
+    [InlineData("--monitor-size", "1460x-2")]
+    [InlineData("--monitor-size", "99999x674")]
     [InlineData("--desconhecida", "1")]
     public void RejectsBadValuesWithAMessageInPortuguese(string flag, string value)
     {

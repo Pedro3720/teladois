@@ -1,4 +1,5 @@
 using System.Globalization;
+using TelaDois.Core.Display;
 
 namespace TelaDois.LatencyBench;
 
@@ -28,6 +29,14 @@ public sealed record BenchOptions(
     /// <summary>Semente do sorteio dos intervalos do parado (<c>--seed</c>); null = a bancada sorteia uma e a escreve no relatório.</summary>
     public int? Seed { get; init; }
 
+    /// <summary>
+    /// Tamanho em que o monitor virtual é ligado (<c>--monitor-size LxA</c>); padrão igual ao app (Etapa 5d): iPhone
+    /// 2556×1179 ÷ 1,75 = 1460×674. Não vale com <c>--monitor</c>.
+    /// </summary>
+    public (int Width, int Height) MonitorSize { get; init; } = DefaultMonitorSize;
+
+    public static readonly (int Width, int Height) DefaultMonitorSize = VirtualMonitorSize.For(2556, 1179);
+
     /// <summary>Duração padrão do parado (1 amostra a cada 2–2,5 s); os outros cenários usam <see cref="Duration"/>.</summary>
     public static readonly TimeSpan StillDefault = TimeSpan.FromSeconds(60);
 
@@ -39,7 +48,7 @@ public sealed record BenchOptions(
         !DurationGiven && scenario == BenchScenarios.Still ? StillDefault : Duration;
 
     public const string Usage =
-        "uso: TelaDois.LatencyBench [--monitor \\\\.\\DISPLAYn] [--variants base,lowpower,…] [--scenarios parado,rolagem,video] [--seconds n (padrão: parado 60, outros 15)] [--out builds/bancada] [--seed n]";
+        "uso: TelaDois.LatencyBench [--monitor \\\\.\\DISPLAYn | --monitor-size LxA (padrão: 1460x674)] [--variants base,lowpower,…] [--scenarios parado,rolagem,video] [--seconds n (padrão: parado 60, outros 15)] [--out builds/bancada] [--seed n]";
 
     /// <summary>
     /// Lê os argumentos; <see cref="ArgumentException"/> com a explicação em português se algum não servir. Sem
@@ -56,6 +65,7 @@ public sealed record BenchOptions(
         var secondsGiven = false;
         int? seed = null;
         string? outDir = null;
+        (int Width, int Height)? monitorSize = null;
 
         for (var i = 0; i < args.Count; i++)
         {
@@ -73,6 +83,9 @@ public sealed record BenchOptions(
                         throw new ArgumentException($"--monitor espera um nome como \\\\.\\DISPLAY1, não \"{value}\"");
                     }
                     monitor = value;
+                    break;
+                case "--monitor-size":
+                    monitorSize = Size(value);
                     break;
                 case "--variants":
                     variants = List(value, "--variants").Select(name =>
@@ -108,6 +121,10 @@ public sealed record BenchOptions(
             }
         }
 
+        if (monitor is not null && monitorSize is not null)
+        {
+            throw new ArgumentException("--monitor-size só vale para o monitor virtual (sem --monitor): um monitor físico fica no tamanho dele");
+        }
         if (outDir is null)
         {
             var start = baseDirectory ?? AppContext.BaseDirectory;
@@ -116,7 +133,25 @@ public sealed record BenchOptions(
                 "passe --out <pasta> (fora de pastas versionadas pelo Git)");
             outDir = Path.Combine(root, "builds", "bancada");
         }
-        return new BenchOptions(monitor, variants, scenarios, TimeSpan.FromSeconds(seconds), Path.GetFullPath(outDir)) { Seed = seed, DurationGiven = secondsGiven };
+        return new BenchOptions(monitor, variants, scenarios, TimeSpan.FromSeconds(seconds), Path.GetFullPath(outDir)) {
+            Seed = seed,
+            DurationGiven = secondsGiven,
+            MonitorSize = monitorSize ?? DefaultMonitorSize,
+        };
+    }
+
+    /// <summary><c>LxA</c> (aceita x, X ou ×), cada lado de 2 a 8192.</summary>
+    private static (int Width, int Height) Size(string value)
+    {
+        var parts = value.Split(['x', 'X', '×'], StringSplitOptions.TrimEntries);
+        if (parts.Length == 2
+            && int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var width)
+            && int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var height)
+            && width is >= 2 and <= 8192 && height is >= 2 and <= 8192)
+        {
+            return (width, height);
+        }
+        throw new ArgumentException($"--monitor-size espera largura x altura, como 1460x674 (cada lado de 2 a 8192), não \"{value}\"");
     }
 
     /// <summary>A primeira pasta, subindo a partir de <paramref name="start"/>, que tem <c>.git</c> (pasta ou arquivo de worktree).</summary>

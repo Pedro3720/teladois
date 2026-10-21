@@ -9,12 +9,14 @@ namespace TelaDois.LatencyBench;
 
 /// <summary>
 /// Bancada de latência: mede captura + compressão com a linha real do FFmpeg. Sem <c>--monitor</c> liga o monitor virtual
-/// como o app (2556×1179) e sempre o desliga no fim; com <c>--monitor</c> usa aquele monitor e não mexe em nenhum.
+/// como o app (<c>--monitor-size</c>, padrão 1460×674 = 2556×1179 ÷ 1,75) e sempre o desliga no fim; com <c>--monitor</c>
+/// usa aquele monitor e não mexe em nenhum.
 /// </summary>
 internal static class Program
 {
-    private const int IphoneWidth = 2556;
-    private const int IphoneHeight = 1179;
+    /// <summary>O monitor medido, para o relatório (preenchido quando a medição começa).</summary>
+    private static string? s_measured;
+
     private static readonly TimeSpan OutputWait = TimeSpan.FromSeconds(10);
     private static readonly CultureInfo Pt = CultureInfo.GetCultureInfo("pt-BR");
 
@@ -128,15 +130,22 @@ internal static class Program
                 Fail(runs, "não deu para ativar o monitor virtual (instale com tools\\vdd\\instalar-vdd.ps1)");
                 return 1;
             }
-            (device, var mode) = display.Attach(IphoneWidth, IphoneHeight);
-            Log($"{device} ligado em {mode.Width}×{mode.Height}@{mode.Frequency}");
+            var (width, height) = options.MonitorSize;
+            (device, var mode) = display.Attach(width, height);
+            Log($"{device} ligado em {mode.Width}×{mode.Height}@{mode.Frequency} (pedido {width}×{height})");
+            if (mode.Width != width || mode.Height != height)
+            {
+                Log($"o driver não tem {width}×{height}: rode tools\\vdd\\instalar-vdd.ps1 de novo como administrador");
+            }
             var output = await WaitForOutputAsync(device, ct);
             if (output is null)
             {
                 Fail(runs, $"o monitor virtual {device} não apareceu na DXGI em {OutputWait.TotalSeconds:0} s");
                 return 1;
             }
-            await RunAllAsync(output, options, ffmpeg, runs, ct);
+            var scale = display.EffectiveDpi(device) is { } dpi ? $"escala {Math.Round(dpi * 100.0 / 96):0}%" : "escala desconhecida";
+            Log(scale);
+            await RunAllAsync(output, options, ffmpeg, runs, ct, $"monitor virtual, pedido {width}×{height}, {scale}");
             return 0;
         }
         finally
@@ -170,8 +179,9 @@ internal static class Program
         return null;
     }
 
-    private static async Task RunAllAsync(DisplayOutput output, BenchOptions options, string ffmpeg, List<BenchRun> runs, CancellationToken ct)
+    private static async Task RunAllAsync(DisplayOutput output, BenchOptions options, string ffmpeg, List<BenchRun> runs, CancellationToken ct, string? detail = null)
     {
+        s_measured = detail is null ? Describe(output) : $"{Describe(output)} — {detail}";
         Console.WriteLine($"medindo {Describe(output)}: {options.Variants.Count} variante(s) × {options.Scenarios.Count} cenário(s), {Durations(options)}");
         if (options.Scenarios.Contains(BenchScenarios.Still) && options.DurationFor(BenchScenarios.Still) < BenchOptions.StillDefault)
         {
@@ -225,6 +235,7 @@ internal static class Program
     {
         var text = new StringBuilder();
         text.AppendLine($"Bancada de latência — {DateTime.Now.ToString("yyyy-MM-dd HH:mm", Pt)} — {Durations(options)}");
+        text.AppendLine($"Monitor: {s_measured ?? "nenhum (a medição não começou)"}");
         text.AppendLine("(\"ideal\" = atraso com leitor ideal: a imagem contada no último byte lido do FFmpeg, sem esperar o AUD da seguinte)");
         string[] header = ["variante", "cenário", "mediana", "p95", "máx", "med. ideal", "p95 ideal", "fps", ">33", ">50", "IDR KB", "Mbit/s", "medidas", "faltas", "suspeita"];
         var rows = new List<string[]> { header };
