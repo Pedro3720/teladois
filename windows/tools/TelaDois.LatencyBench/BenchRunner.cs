@@ -39,6 +39,7 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
         var h264 = new List<byte[]>();
         IReadOnlyList<DrawEvent> draws;
         string loops;
+        var endWindows = "";
         using (var screen = BenchScreen.Start(scenario, monitor))
         {
             try
@@ -47,7 +48,8 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
                 notes.Add($"{variant.Name}/{scenario}: janelas: {screen.Describe()}");
                 var args = FfmpegArguments.ForMonitor(profile, output.OutputIndex, Fps, variant.Settings);
                 var errors = await CaptureAsync(args, duration, arrivals, h264, ct);
-                notes.Add($"{variant.Name}/{scenario}: janelas no fim: {screen.Describe()}");
+                endWindows = screen.Describe();
+                notes.Add($"{variant.Name}/{scenario}: janelas no fim: {endWindows}");
                 if (arrivals.Count == 0)
                 {
                     notes.Add($"o FFmpeg não mandou nenhuma imagem{(errors.Length > 0 ? $": {errors}" : "")}");
@@ -93,7 +95,12 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
         // 5: atrasos (só a imagem onde cada código novo aparece), estatística, CSV e print.
         var latencies = LatencyMatcher.Match(draws, measured.Take(matchedCodes.Count).ToList(), matchedCodes, Stopwatch.Frequency);
         var samples = LatencyMatcher.FirstChangesOnly(matchedCodes, latencies);
-        var result = BenchStats.Compute(variant.Name, scenario, measured, samples, Stopwatch.Frequency) with { Suspect = suspect };
+        var result = BenchStats.Compute(variant.Name, scenario, measured, samples, Stopwatch.Frequency) with
+        {
+            Suspect = suspect,
+            // Parado: separa as trocas vindas de tela ociosa das que tinham alguém mexendo naquele monitor.
+            Still = scenario == BenchScenarios.Still ? StillSamples.Split(measured, matchedCodes, latencies) : null,
+        };
 
         Directory.CreateDirectory(outDir);
         var csv = Path.Combine(outDir, "resultados.csv");
@@ -102,9 +109,17 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
 
         await WriteFramesAsync(Path.Combine(outDir, $"quadros-{variant.Name}-{scenario}.csv"), arrivals, codes, draws, count, skip, ct);
 
-        if (scenario == BenchScenarios.Scroll && count > 0)
+        var pngPath = Path.Combine(outDir, $"{variant.Name}-rolagem.png");
+        var windowsHidden = endWindows.Contains("COBERTA", StringComparison.Ordinal) || endWindows.Contains("INVISÍVEL", StringComparison.Ordinal);
+        if (scenario == BenchScenarios.Scroll && count > 0 && windowsHidden)
         {
-            var png = Path.Combine(outDir, $"{variant.Name}-rolagem.png");
+            // Outra janela na frente (ou janela invisível): o recorte mostraria a tela do usuário, não a bancada.
+            File.Delete(pngPath);
+            notes.Add($"{variant.Name}/{scenario}: .png não gravado — no fim as janelas da bancada estavam cobertas ou invisíveis ({endWindows})");
+        }
+        else if (scenario == BenchScenarios.Scroll && count > 0)
+        {
+            var png = pngPath;
             var filter = BenchLayout.ScrollPngFilter(count / 2, output.Width, output.Height, encodedWidth, encodedHeight);
             var pngErrors = await SaveFrameAsync(h264, filter, png, ct);
             notes.Add(File.Exists(png) ? $"imagem do meio da rolagem (só o marcador e a janela de rolagem): {png}" : $"não deu para gravar {png}: {pngErrors}");

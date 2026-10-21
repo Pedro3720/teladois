@@ -194,6 +194,10 @@ internal static class Program
                 if (run.Result is { } r)
                 {
                     Console.WriteLine($"  mediana {Ms(r.MedianMs)}, p95 {Ms(r.P95Ms)}, {r.Fps.ToString("0.0", Pt)} imagens/s, medidas {r.Measured}, faltas {r.Missing}");
+                    if (r.Still is { } s)
+                    {
+                        Console.WriteLine($"  ociosas {s.Idle} (mediana {Ms(s.IdleMedianMs)}, p95 {Ms(s.IdleP95Ms)}), com atividade {s.Active} (mediana {Ms(s.ActiveMedianMs)})");
+                    }
                 }
             }
         }
@@ -229,6 +233,22 @@ internal static class Program
         if (failed > 0)
         {
             text.AppendLine($"{failed} rodada(s) sem medida (ver as observações abaixo).");
+        }
+        var still = runs.Select(run => run.Result).OfType<BenchResult>().Where(r => r.Still is not null).ToList();
+        if (still.Count > 0)
+        {
+            text.AppendLine();
+            text.AppendLine($"Parado — trocas vindas de tela ociosa (as {StillSamples.Lookback} imagens antes no tamanho mínimo) × com atividade naquele monitor:");
+            foreach (var r in still)
+            {
+                var s = r.Still!;
+                text.AppendLine($"  {r.Variant}: ociosas {s.Idle} (mediana {Ms(s.IdleMedianMs)}, p95 {Ms(s.IdleP95Ms)}) · " +
+                    $"com atividade {s.Active} (mediana {Ms(s.ActiveMedianMs)}, p95 {Ms(s.ActiveP95Ms)}) · geral mediana {Ms(r.MedianMs)}, p95 {Ms(r.P95Ms)}");
+            }
+            if (options.Monitor is not null)
+            {
+                text.AppendLine($"  Atenção: no {options.Monitor} (monitor físico) o parado depende de ninguém mexer naquela tela; o número que vale é o das ociosas.");
+            }
         }
         text.AppendLine("Observações:");
         foreach (var note in runs.SelectMany(run => run.Notes))

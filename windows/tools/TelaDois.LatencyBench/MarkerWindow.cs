@@ -102,7 +102,10 @@ internal sealed class MarkerWindow(Rectangle bounds) : BenchForm(bounds)
 /// <item><c>parado</c>: nada é repintado entre as trocas (a tela fica parada de verdade); a cada 2 s pelo
 /// <c>Stopwatch</c>: troca o código, pinta, <c>DwmFlush()</c> e anota.</item>
 /// </list>
-/// Um <c>DwmFlush</c> que falha não vira desenho (não se sabe quando foi composto): só conta como falha.
+/// O instante anotado é o da composição pelo lado do DWM (<c>qpcCompose − qpcRefreshPeriod</c> de
+/// <c>DwmGetCompositionTimingInfo</c>, ver <see cref="Composition"/>), só se o número da composição (<c>cFrame</c>)
+/// avançou desde antes da pintura; senão (ou se o <c>DwmFlush</c> falhou)
+/// não vira desenho e conta como falha. No parado, o topo das janelas é reafirmado ~1 s longe de cada troca.
 /// </summary>
 internal sealed class BenchScreen : IDisposable
 {
@@ -110,6 +113,73 @@ internal sealed class BenchScreen : IDisposable
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmFlush();
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetCompositionTimingInfo(IntPtr hwnd, ref DwmTimingInfo info);
+
+    /// <summary><c>DWM_TIMING_INFO</c> de <c>dwmapi.h</c> (empacotado em 1 byte, <c>pshpack1.h</c>).</summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct DwmTimingInfo
+    {
+        public uint CbSize;
+        public uint RateRefreshNumerator, RateRefreshDenominator;
+        public ulong QpcRefreshPeriod;
+        public uint RateComposeNumerator, RateComposeDenominator;
+        public ulong QpcVBlank, CRefresh;
+        public uint CDXRefresh;
+        public ulong QpcCompose, CFrame;
+        public uint CDXPresent;
+        public ulong CRefreshFrame, CFrameSubmitted;
+        public uint CDXPresentSubmitted;
+        public ulong CFrameConfirmed;
+        public uint CDXPresentConfirmed;
+        public ulong CRefreshConfirmed;
+        public uint CDXRefreshConfirmed;
+        public ulong CFramesLate;
+        public uint CFramesOutstanding;
+        public ulong CFrameDisplayed, QpcFrameDisplayed, CRefreshFrameDisplayed, CFrameComplete, QpcFrameComplete,
+            CFramePending, QpcFramePending, CFramesDisplayed, CFramesComplete, CFramesPending, CFramesAvailable,
+            CFramesDropped, CFramesMissed, CRefreshNextDisplayed, CRefreshNextPresented, CRefreshesDisplayed,
+            CRefreshesPresented, CRefreshStarted, CPixelsReceived, CPixelsDrawn, CBuffersEmpty;
+    }
+
+    /// <summary>
+    /// Número da composição e instante da composição que <b>acabou</b> de acontecer (QPC = ticks do <c>Stopwatch</c>);
+    /// null se o DWM não informar. Medido neste PC (2026-10-21): logo depois do <c>DwmFlush</c>, <c>qpcCompose</c>
+    /// (= <c>qpcVBlank</c>) fica sempre 15,7–16,0 ms no futuro — é a <b>próxima</b> composição; a que mostrou a pintura é
+    /// <c>qpcCompose − qpcRefreshPeriod</c>.
+    /// </summary>
+    private static (ulong Frame, long Qpc)? Composition()
+    {
+        var info = new DwmTimingInfo { CbSize = (uint)Marshal.SizeOf<DwmTimingInfo>() };
+        return DwmGetCompositionTimingInfo(IntPtr.Zero, ref info) >= 0
+            ? (info.CFrame, (long)info.QpcCompose - (long)info.QpcRefreshPeriod)
+            : null;
+    }
+
+    /// <summary>
+    /// <c>DwmFlush</c> e o instante da composição que mostrou a pintura feita depois de <paramref name="before"/>, só se o
+    /// <c>cFrame</c> avançou e a composição não é anterior a <paramref name="paintedAt"/>; senão conta como falha.
+    /// </summary>
+    private bool TryComposed((ulong Frame, long Qpc)? before, long paintedAt, out long composedAt)
+    {
+        composedAt = 0;
+        var flushed = DwmFlush() >= 0;
+        var returned = Stopwatch.GetTimestamp();
+        var after = Composition();
+        if (!flushed || before is not { } b || after is not { } a || a.Frame <= b.Frame || a.Qpc < paintedAt)
+        {
+            _flushFailures++;
+            return false;
+        }
+        if (a.Frame > b.Frame + 1)
+        {
+            _skippedCompositions++;
+        }
+        _composeToReturnTicks += returned - a.Qpc;
+        composedAt = a.Qpc;
+        return true;
+    }
 
     private readonly string _scenario;
     private readonly Rectangle _monitor;
@@ -125,6 +195,8 @@ internal sealed class BenchScreen : IDisposable
     private bool _stopped;
     private int _loops;
     private int _flushFailures;
+    private int _skippedCompositions;
+    private long _composeToReturnTicks;
     private long _loopStart;
     private long _loopEnd;
 
@@ -190,8 +262,11 @@ internal sealed class BenchScreen : IDisposable
     {
         var seconds = (_loopEnd - _loopStart) / (double)Stopwatch.Frequency;
         var drawsPerSecond = seconds > 0 ? _draws.Count / seconds : 0;
-        var failures = _flushFailures == 0 ? "" : $", DwmFlush falhou {_flushFailures} vez(es)";
-        return $"{_draws.Count} desenhos em {seconds:0.0} s = {drawsPerSecond:0.0} voltas/s ({_loops} voltas){failures}";
+        var failures = _flushFailures == 0 ? "" : $", sem composição confirmada pelo DWM {_flushFailures} vez(es)";
+        var skipped = _skippedCompositions == 0 ? "" : $", {_skippedCompositions} vez(es) mais de 1 composição no meio";
+        var lag = _draws.Count == 0 ? 0 : _composeToReturnTicks * 1000.0 / Stopwatch.Frequency / _draws.Count;
+        return $"{_draws.Count} desenhos em {seconds:0.0} s = {drawsPerSecond:0.0} voltas/s ({_loops} voltas), " +
+            $"DwmFlush volta {lag:0.0} ms depois da composição em média{failures}{skipped}";
     }
 
     public void Dispose()
@@ -320,25 +395,22 @@ internal sealed class BenchScreen : IDisposable
         var lastRaise = 0L;
         var code = 0;
         int? pending = null; // o código 0 pintado ao abrir não é anotado (a 1ª imagem nunca é amostra)
+        (ulong Frame, long Qpc)? before = null;
+        var paintedAt = 0L;
         while (!_stop)
         {
-            var flushed = DwmFlush() >= 0;
-            var now = Stopwatch.GetTimestamp();
             if (pending is { } drawn)
             {
-                if (flushed)
+                if (TryComposed(before, paintedAt, out var composedAt))
                 {
-                    _draws.Add(new DrawEvent(drawn, now));
-                }
-                else
-                {
-                    _flushFailures++;
+                    _draws.Add(new DrawEvent(drawn, composedAt));
                 }
             }
-            if (!flushed)
+            else if (DwmFlush() < 0)
             {
                 Thread.Sleep(1);
             }
+            var now = Stopwatch.GetTimestamp();
             code = (code + 1) & 0xFFFF;
             pending = code;
             var raise = now - lastRaise >= raiseEvery;
@@ -347,6 +419,8 @@ internal sealed class BenchScreen : IDisposable
                 lastRaise = now;
             }
             _loops++;
+            before = Composition();
+            paintedAt = Stopwatch.GetTimestamp();
             if (!Paint(code, raise, advanceScene: true))
             {
                 return;
@@ -358,9 +432,21 @@ internal sealed class BenchScreen : IDisposable
     {
         var code = 0;
         var next = Stopwatch.GetTimestamp() + StillInterval;
+        var raised = false;
         while (!_stop)
         {
-            var wait = next - Stopwatch.GetTimestamp();
+            var now = Stopwatch.GetTimestamp();
+            // Topo reafirmado na metade do intervalo: ~1 s longe da troca anterior e da seguinte.
+            if (!raised && now >= next - StillInterval / 2)
+            {
+                raised = true;
+                if (!RaiseWindows())
+                {
+                    return;
+                }
+                continue;
+            }
+            var wait = next - now;
             if (wait > 0)
             {
                 Thread.Sleep((int)Math.Clamp(wait * 1000 / Stopwatch.Frequency, 1, 50));
@@ -368,19 +454,38 @@ internal sealed class BenchScreen : IDisposable
             }
             code = (code + 1) & 0xFFFF;
             _loops++;
-            if (!Paint(code, raise: true, advanceScene: false))
+            var before = Composition();
+            var paintedAt = Stopwatch.GetTimestamp();
+            if (!Paint(code, raise: false, advanceScene: false))
             {
                 return;
             }
-            if (DwmFlush() >= 0)
+            if (TryComposed(before, paintedAt, out var composedAt))
             {
-                _draws.Add(new DrawEvent(code, Stopwatch.GetTimestamp()));
-            }
-            else
-            {
-                _flushFailures++;
+                _draws.Add(new DrawEvent(code, composedAt));
             }
             next += StillInterval;
+            raised = false;
+        }
+    }
+
+    /// <summary>Só reafirma o topo das janelas (sem pintar); <c>false</c> se as janelas já fecharam.</summary>
+    private bool RaiseWindows()
+    {
+        var marker = _marker!;
+        var scene = _scene;
+        try
+        {
+            marker.Invoke(() =>
+            {
+                scene?.Raise();
+                marker.Raise();
+            });
+            return true;
+        }
+        catch (Exception e) when (e is ObjectDisposedException or InvalidOperationException)
+        {
+            return false;
         }
     }
 
