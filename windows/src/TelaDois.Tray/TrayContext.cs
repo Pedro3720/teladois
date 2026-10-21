@@ -33,6 +33,7 @@ internal sealed class TrayContext : ApplicationContext
     private int _driverWarned;
     private int _switchWarned;
     private int _scaleWarned;
+    private int _modesWarned;
 
     public TrayContext()
     {
@@ -88,6 +89,15 @@ internal sealed class TrayContext : ApplicationContext
             {
                 PostToUi(() => _icon.ShowBalloonTip(10000, "TelaDois",
                     "Rode o instalador do monitor virtual de novo (como administrador) para o Windows esconder o monitor quando ele não estiver em uso.", ToolTipIcon.Info));
+            }
+        };
+        video.DriverModesOutdated += () =>
+        {
+            // Uma vez por execução: a fábrica avisa a cada vez que liga o monitor.
+            if (Interlocked.Exchange(ref _modesWarned, 1) == 0)
+            {
+                PostToUi(() => _icon.ShowBalloonTip(15000, "TelaDois",
+                    "Rode o instalador do monitor virtual de novo (como administrador) para o monitor do iPhone usar a resolução nova em 100%.", ToolTipIcon.Info));
             }
         };
         video.ScaleNotNative += percent =>

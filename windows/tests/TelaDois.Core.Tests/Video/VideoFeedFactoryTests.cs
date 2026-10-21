@@ -381,9 +381,7 @@ public class VideoFeedFactoryTests
         await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
 
         Assert.Equal(new VideoConfig(2622, 1206, 60), feed!.Config);
-        // Driver sem os modos novos (instalador antigo): avisa no registro para rodar o instalador de novo.
-        Assert.Contains(log, line => line.StartsWith("o monitor virtual não tem 1460×674: usando 2622×1206", StringComparison.Ordinal)
-            && line.Contains("instalar-vdd.ps1", StringComparison.Ordinal));
+        Assert.Contains("o monitor virtual não tem 1460×674: usando 2622×1206", log);
     }
 
     private static (VideoFeedFactory Factory, FakeVirtualMonitor Monitor, ConcurrentQueue<string> Log, ConcurrentQueue<int> Warned) ScaleCase(Action<FakeVirtualMonitor> setup)
@@ -440,13 +438,16 @@ public class VideoFeedFactoryTests
     [Fact]
     public async Task ScaleFailuresNeverStopTheExtend()
     {
-        var (factory, monitor, _, _) = ScaleCase(m => m.Dpi = 168);
+        var (factory, monitor, log, _) = ScaleCase(m => m.Dpi = 168);
         monitor.DpiError = new InvalidOperationException("API do Windows falhou");
         factory.ScaleNotNative += _ => throw new InvalidOperationException("assinante quebrado");
 
         await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
 
         Assert.Equal(VideoKind.Extend, feed!.Kind);
+        // Uma linha só, com o motivo (não duas para a mesma falha).
+        Assert.Single(log, line => line.Contains("escala", StringComparison.Ordinal));
+        Assert.Contains(log, line => line.Contains("API do Windows falhou", StringComparison.Ordinal));
 
         var (factory2, _, _, warned) = ScaleCase(m => m.Dpi = 168);
         factory2.ScaleNotNative += _ => throw new InvalidOperationException("assinante quebrado");
@@ -468,6 +469,58 @@ public class VideoFeedFactoryTests
 
         Assert.Equal(VideoKind.Mirror, feed!.Kind);
         Assert.Empty(warned);
+    }
+
+    [Fact]
+    public async Task OldDriverWithoutTheNewModesFallsBackToTheIphoneSizeAndWarns()
+    {
+        // Instalador antigo (só os 6 modos de antes): pedir 1460×674 cairia em 2796×1290 (proporção mais perto), pior que
+        // antes. Volta ao tamanho do iPhone, como era, e pede para rodar o instalador de novo.
+        var monitor = new FakeVirtualMonitor { AvailableModes = FakeVirtualMonitor.OldDriverModes };
+        var log = new ConcurrentQueue<string>();
+        var outdated = 0;
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => monitor.Attached ? new[] { Main, Virtual } : new[] { Main }, () => null, log.Enqueue, monitor);
+        factory.DriverModesOutdated += () => Interlocked.Increment(ref outdated);
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal((2556, 1179), monitor.AttachRequested);
+        Assert.Equal(VirtualDisplay.ChooseMode(FakeVirtualMonitor.OldDriverModes, 2556, 1179), new DisplayModeInfo(2556, 1179, 60));
+        Assert.Equal(VideoKind.Extend, feed!.Kind);
+        Assert.Equal(1, outdated);
+        Assert.Contains(log, line => line.Contains("não tem 1460×674", StringComparison.Ordinal) && line.Contains("instalar-vdd.ps1", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task DriverWithTheNewModesDoesNotWarn()
+    {
+        var monitor = new FakeVirtualMonitor { Mode = new DisplayModeInfo(1460, 674, 60) };
+        var outdated = 0;
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => monitor.Attached ? new[] { Main, Virtual with { Width = 1460, Height = 674 } } : new[] { Main }, () => null, _ => { }, monitor);
+        factory.DriverModesOutdated += () => Interlocked.Increment(ref outdated);
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal((1460, 674), monitor.AttachRequested);
+        Assert.Equal(0, outdated);
+    }
+
+    [Fact]
+    public async Task ModesThatCannotBeReadKeepTheNewSizeAndAThrowingSubscriberIsHarmless()
+    {
+        // Lista vazia (o Windows não respondeu): não dá para afirmar que o driver é antigo; o Attach decide como sempre.
+        var monitor = new FakeVirtualMonitor { AvailableModes = [] };
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => monitor.Attached ? new[] { Main, Virtual } : new[] { Main }, () => null, _ => { }, monitor);
+        factory.DriverModesOutdated += () => throw new InvalidOperationException("não devia avisar");
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+        Assert.Equal((1460, 674), monitor.AttachRequested);
+
+        var old = new FakeVirtualMonitor { AvailableModes = FakeVirtualMonitor.OldDriverModes };
+        var factory2 = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => old.Attached ? new[] { Main, Virtual } : new[] { Main }, () => null, _ => { }, old);
+        factory2.DriverModesOutdated += () => throw new InvalidOperationException("assinante quebrado");
+        await using var feed2 = await factory2.OpenAsync(Hello, CancellationToken.None);
+        Assert.Equal(VideoKind.Extend, feed2!.Kind);
     }
 
     [Fact]

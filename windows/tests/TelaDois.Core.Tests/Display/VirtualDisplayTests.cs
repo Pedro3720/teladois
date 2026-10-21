@@ -191,15 +191,39 @@ public class VirtualDisplayTests
     }
 
     [Fact]
-    public void EffectiveDpiNeverThrows()
+    public void EffectiveDpiLetsTheCallerLogWindowsFailures()
     {
+        // Quem chama (a fábrica, a bancada) registra numa linha só, com o motivo.
         var api = TwoMonitorsAndDriver();
         api.DpiError = new InvalidOperationException("shcore falhou");
         var log = new List<string>();
         var display = new VirtualDisplay(api, new NoPipe(), log: log.Add);
 
-        Assert.Null(display.EffectiveDpi(Virtual));
-        Assert.Contains(log, line => line.Contains("shcore falhou", StringComparison.Ordinal));
+        Assert.Equal("shcore falhou", Assert.Throws<InvalidOperationException>(() => display.EffectiveDpi(Virtual)).Message);
+        Assert.Empty(log);
+    }
+
+    [Fact]
+    public void ModesAreThoseOfTheDriverMonitor()
+    {
+        var display = new VirtualDisplay(TwoMonitorsAndDriver(), new NoPipe());
+
+        Assert.Equal(new DisplayModeInfo[] { new(1920, 1080, 60), new(2556, 1179, 60), new(2622, 1206, 60) }, display.Modes());
+    }
+
+    [Fact]
+    public void ModesWithoutTheDriverOrWithAWindowsFailureAreEmpty()
+    {
+        var none = new FakeDisplayApi();
+        none.DeviceList.Add(new DisplayDeviceInfo(@"\\.\DISPLAY1", "Intel(R) UHD Graphics", true, true));
+        none.ModeList[@"\\.\DISPLAY1"] = [new(1920, 1080, 60)];
+        Assert.Empty(new VirtualDisplay(none, new NoPipe()).Modes()); // nunca os de um monitor físico
+
+        var failing = TwoMonitorsAndDriver();
+        failing.ModesError = new InvalidOperationException("EnumDisplaySettings falhou");
+        var log = new List<string>();
+        Assert.Empty(new VirtualDisplay(failing, new NoPipe(), log: log.Add).Modes());
+        Assert.Contains(log, line => line.Contains("EnumDisplaySettings falhou", StringComparison.Ordinal));
     }
 
     /// <summary>Medido no driver 25.7.23: sem gravar no registro, ligar falha com DISP_CHANGE_FAILED (-1).</summary>

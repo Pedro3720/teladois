@@ -30,8 +30,12 @@ public interface IVirtualMonitor
     bool IsAttached(string deviceName);
 
     /// <summary>
-    /// DPI efetivo do monitor virtual no desktop (96 = escala 100%); <c>null</c> se não deu para ler ou se
-    /// <paramref name="deviceName"/> não é o monitor virtual. Nunca lança.
+    /// DPI efetivo do monitor virtual no desktop (96 = escala 100%); <c>null</c> se o Windows não informou ou se
+    /// <paramref name="deviceName"/> não é o monitor virtual. Uma falha da API do Windows sai como exceção: quem chama
+    /// registra numa linha só, com o motivo.
     /// </summary>
     int? EffectiveDpi(string deviceName);
+
+    /// <summary>Os modos que o monitor virtual informa (os do <c>vdd_settings.xml</c>); vazio sem ele ou se o Windows falhou. Nunca lança.</summary>
+    IReadOnlyList<DisplayModeInfo> Modes();
 }

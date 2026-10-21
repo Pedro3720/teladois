@@ -40,6 +40,12 @@ public sealed class VideoFeedFactory(
     /// </summary>
     public event Action<int>? ScaleNotNative;
 
+    /// <summary>
+    /// O driver do monitor virtual não tem o modo ÷ 1,75 (instalador de antes da Etapa 5d): a Segunda Tela estende no
+    /// tamanho do iPhone, como antes. Avisa a cada abertura; um assinante que lança não atrapalha a Segunda Tela.
+    /// </summary>
+    public event Action? DriverModesOutdated;
+
     /// <summary>Quanto esperar o monitor recém-ligado aparecer na DXGI (o IddCx pode levar segundos).</summary>
     public TimeSpan OutputWait { get; init; } = TimeSpan.FromSeconds(5);
 
@@ -139,10 +145,10 @@ public sealed class VideoFeedFactory(
     {
         string device;
         DisplayModeInfo mode;
-        // Etapa 5d: o tamanho do iPhone ÷ 1,75, para o monitor em escala 100% (o iPhone amplia a imagem).
-        var (width, height) = VirtualMonitorSize.For((int)Math.Min(hello.Width, int.MaxValue), (int)Math.Min(hello.Height, int.MaxValue));
+        int width, height;
         try
         {
+            (width, height) = AttachSize(monitor, hello);
             (device, mode) = monitor.Attach(width, height);
         }
         catch (Exception e) when (e is DisplayChangeException or InvalidOperationException)
@@ -161,7 +167,7 @@ public sealed class VideoFeedFactory(
         {
             if (mode.Width != width || mode.Height != height)
             {
-                log($"o monitor virtual não tem {width}×{height}: usando {mode.Width}×{mode.Height} (rode tools\\vdd\\instalar-vdd.ps1 de novo como administrador)");
+                log($"o monitor virtual não tem {width}×{height}: usando {mode.Width}×{mode.Height}");
             }
             var waited = Stopwatch.StartNew();
             var output = await WaitForOutputAsync(device, ct);
@@ -206,6 +212,34 @@ public sealed class VideoFeedFactory(
             await PowerOffQuietlyAsync(monitor);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Etapa 5d: o tamanho do iPhone ÷ 1,75 (<see cref="VirtualMonitorSize"/>), para o monitor em escala 100% (o iPhone
+    /// amplia a imagem). Se o driver informa modos e esse não está entre eles (instalador antigo), pedir o novo cairia na
+    /// proporção mais perto (2796×1290 para 1460×674), pior que antes: liga no tamanho do iPhone, como antes da 5d, e
+    /// dispara <see cref="DriverModesOutdated"/>. Lista vazia (o Windows não respondeu) não prova nada: pede o novo.
+    /// </summary>
+    private (int Width, int Height) AttachSize(IVirtualMonitor monitor, HelloInfo hello)
+    {
+        var iphone = ((int)Math.Min(hello.Width, int.MaxValue), (int)Math.Min(hello.Height, int.MaxValue));
+        var (width, height) = VirtualMonitorSize.For(iphone.Item1, iphone.Item2);
+        var modes = monitor.Modes();
+        if (modes.Count == 0 || modes.Any(m => m.Width == width && m.Height == height))
+        {
+            return (width, height);
+        }
+        log($"o driver do monitor virtual não tem {width}×{height} (instalação antiga): ligando em {iphone.Item1}×{iphone.Item2} como antes; " +
+            @"para a escala 100%, rode tools\vdd\instalar-vdd.ps1 de novo como administrador");
+        try
+        {
+            DriverModesOutdated?.Invoke();
+        }
+        catch (Exception e)
+        {
+            log($"o aviso do instalador antigo falhou: {e.Message}");
+        }
+        return iphone;
     }
 
     /// <summary>Registra a escala efetiva do monitor virtual recém-ligado (96 DPI = 100%) e avisa se não for 100%. Nunca lança.</summary>

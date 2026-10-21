@@ -159,19 +159,23 @@ public sealed class VirtualDisplay(IDisplayApi api, IDriverPipe pipe, IDeviceSwi
     }
 
     /// <summary>
-    /// DPI efetivo do monitor do driver (96 = 100%). Só pergunta pelo monitor do driver; qualquer outro nome, ou uma falha
-    /// do Windows (registrada no log), dá <c>null</c>. Nunca lança.
+    /// DPI efetivo do monitor do driver (96 = 100%). Só pergunta pelo monitor do driver: qualquer outro nome dá
+    /// <c>null</c>. Uma falha do Windows sai como exceção (quem chama registra numa linha só).
     /// </summary>
-    public int? EffectiveDpi(string deviceName)
+    public int? EffectiveDpi(string deviceName) =>
+        FindDriverDevice(deviceName) is { } device ? api.EffectiveDpi(device.DeviceName) : null;
+
+    /// <summary>Os modos do monitor do driver (nunca os de um físico); vazio sem ele ou com falha do Windows (registrada). Nunca lança.</summary>
+    public IReadOnlyList<DisplayModeInfo> Modes()
     {
         try
         {
-            return FindDriverDevice(deviceName) is { } device ? api.EffectiveDpi(device.DeviceName) : null;
+            return Find() is { } device ? api.Modes(device) : [];
         }
         catch (Exception ex)
         {
-            Log($"não deu para ler a escala do monitor virtual: {ex.Message}");
-            return null;
+            Log($"não deu para listar os modos do monitor virtual: {ex.Message}");
+            return [];
         }
     }
 

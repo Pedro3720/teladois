@@ -34,8 +34,11 @@ internal sealed class FakeDisplayApi : IDisplayApi
         }
     }
 
+    /// <summary>Se definido, <see cref="Modes"/> lança esta exceção.</summary>
+    public Exception? ModesError { get; set; }
+
     public IReadOnlyList<DisplayModeInfo> Modes(string deviceName) =>
-        ModeList.TryGetValue(deviceName, out var modes) ? modes : [];
+        ModesError is { } error ? throw error : ModeList.TryGetValue(deviceName, out var modes) ? modes : [];
 
     public DisplayBounds? Bounds(string deviceName) =>
         BoundsList.TryGetValue(deviceName, out var bounds) ? bounds : null;

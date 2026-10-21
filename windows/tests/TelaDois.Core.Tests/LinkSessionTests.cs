@@ -822,6 +822,7 @@ public class LinkSessionTests
         public (string DeviceName, DisplayModeInfo Mode) Attach(int width, int height) => inner.Attach(width, height);
         public bool IsAttached(string deviceName) => inner.IsAttached(deviceName);
         public int? EffectiveDpi(string deviceName) => inner.EffectiveDpi(deviceName);
+        public IReadOnlyList<DisplayModeInfo> Modes() => inner.Modes();
 
         public void Detach(string deviceName)
         {

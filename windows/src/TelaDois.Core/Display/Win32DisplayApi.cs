@@ -86,7 +86,7 @@ public sealed class Win32DisplayApi(bool persist) : IDisplayApi
     /// <summary>
     /// Acha o <c>HMONITOR</c> pelo nome (<c>EnumDisplayMonitors</c> + <c>GetMonitorInfo</c>) e lê o DPI efetivo. A thread
     /// fica com reconhecimento de DPI por monitor (V2) só durante a consulta: sem isso, um processo sem esse modo recebe
-    /// sempre 96 do Windows.
+    /// sempre 96 do Windows. É só uma garantia a mais: a bandeja e a bancada já rodam em PerMonitorV2.
     /// </summary>
     public int? EffectiveDpi(string deviceName)
     {
@@ -96,13 +96,21 @@ public sealed class Win32DisplayApi(bool persist) : IDisplayApi
             var found = IntPtr.Zero;
             MonitorEnumProc callback = (monitor, _, _, _) =>
             {
-                var info = new MonitorInfoEx { cbSize = Marshal.SizeOf<MonitorInfoEx>() };
-                if (GetMonitorInfo(monitor, ref info) && string.Equals(info.szDevice, deviceName, StringComparison.OrdinalIgnoreCase))
+                // Chamado pelo Windows: uma exceção aqui não pode atravessar o código nativo; para a enumeração.
+                try
                 {
-                    found = monitor;
+                    var info = new MonitorInfoEx { cbSize = Marshal.SizeOf<MonitorInfoEx>() };
+                    if (GetMonitorInfo(monitor, ref info) && string.Equals(info.szDevice, deviceName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        found = monitor;
+                        return false;
+                    }
+                    return true;
+                }
+                catch (Exception)
+                {
                     return false;
                 }
-                return true;
             };
             EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, callback, IntPtr.Zero);
             GC.KeepAlive(callback);

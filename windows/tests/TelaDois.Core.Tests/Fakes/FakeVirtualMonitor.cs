@@ -17,6 +17,19 @@ internal sealed class FakeVirtualMonitor : IVirtualMonitor
     public DisplayModeInfo Mode { get; set; } = new(2556, 1179, 60);
     public Exception? AttachError { get; set; }
 
+    /// <summary>Os 6 modos do <c>vdd_settings.xml</c> antes da Etapa 5d (instalador antigo).</summary>
+    public static readonly IReadOnlyList<DisplayModeInfo> OldDriverModes =
+        [new(2556, 1179, 60), new(2796, 1290, 60), new(2622, 1206, 60), new(2868, 1320, 60), new(2736, 1260, 60), new(1920, 1080, 60)];
+
+    /// <summary>Os 11 modos de hoje: os antigos + os ÷ 1,75 da Etapa 5d.</summary>
+    public static readonly IReadOnlyList<DisplayModeInfo> CurrentDriverModes =
+        [.. OldDriverModes, new(1460, 674, 60), new(1598, 738, 60), new(1498, 690, 60), new(1638, 754, 60), new(1564, 720, 60)];
+
+    /// <summary>Resposta do <see cref="Modes"/> (padrão: o driver com o instalador de hoje).</summary>
+    public IReadOnlyList<DisplayModeInfo> AvailableModes { get; set; } = CurrentDriverModes;
+
+    public IReadOnlyList<DisplayModeInfo> Modes() => AvailableModes;
+
     /// <summary>O tamanho pedido no último <see cref="Attach"/>.</summary>
     public (int Width, int Height)? AttachRequested { get; private set; }
 
