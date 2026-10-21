@@ -14,6 +14,8 @@ final class UsbLink {
     private(set) var videoConfig: LinkVideoConfig?
     /// Constante: o `@Observable` não acompanha `let`.
     let renderer: VideoRenderer
+    /// O PC pediu tela preta (`SCREEN`): a Segunda Tela segue rodando por baixo e 1 toque acende.
+    private(set) var isScreenDark = false
     /// Atraso da fila principal, para o `STATS` (diagnóstico).
     private let lagProbe: MainLagProbe
 
@@ -140,6 +142,7 @@ final class UsbLink {
             case .config:
                 if let config = LinkProtocol.parseConfig(frame) {
                     renderer.reset()
+                    isScreenDark = false
                     videoConfig = config
                     lagProbe.start()
                 }
@@ -148,8 +151,14 @@ final class UsbLink {
                     renderer.stats.record { $0.frameReceived() }
                     renderer.enqueue(video, receivedAt: receivedAt)
                 }
+            case .screen:
+                // Só vale na Segunda Tela; no Descanso o PC não manda e o iPhone ignora.
+                if videoConfig != nil {
+                    isScreenDark = LinkProtocol.parseScreen(frame) ?? isScreenDark
+                }
             case .videoEnd:
                 // O PC desligou a Segunda Tela (atalho ou bandeja): volta ao relógio, conexão continua.
+                isScreenDark = false
                 if videoConfig != nil {
                     videoConfig = nil
                     renderer.reset()
@@ -171,6 +180,13 @@ final class UsbLink {
         return true
     }
 
+    /// Toque na tela preta: acende e avisa o PC com `SCREEN(0)`.
+    func wakeScreen() {
+        guard isScreenDark else { return }
+        isScreenDark = false
+        send(LinkProtocol.screen(dark: false))
+    }
+
     private func send(_ frame: LinkFrame) {
         connection?.send(content: Data(frame.encoded()), completion: .contentProcessed { _ in })
     }
@@ -185,6 +201,7 @@ final class UsbLink {
         connection?.cancel()
         connection = nil
         isConnected = false
+        isScreenDark = false
         if videoConfig != nil {
             videoConfig = nil
             renderer.reset()

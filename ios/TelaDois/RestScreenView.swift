@@ -36,6 +36,17 @@ struct RestScreenView: View {
                         .accessibilityElement()
                         .accessibilityIdentifier("second-screen")
                         .accessibilityLabel("Segunda Tela")
+                    if link.isScreenDark {
+                        // O PC apagou a tela: camada preta por cima do vídeo, que segue rodando; 1 toque acende.
+                        Color.black
+                            .contentShape(Rectangle())
+                            .onTapGesture { link.wakeScreen() }
+                            .accessibilityElement()
+                            .accessibilityIdentifier("screen-dark-overlay")
+                            .accessibilityLabel("Tela apagada")
+                            .accessibilityHint("Toque para acender")
+                            .accessibilityAddTraits(.isButton)
+                    }
                 } else {
                     ClockPageView(
                         clock: ClockFormatter.text(for: now, timeZone: settings.timeZone),
@@ -78,7 +89,7 @@ struct RestScreenView: View {
             if link.videoConfig != nil {
                 // Segunda Tela: nunca escurece e usa o brilho do usuário.
                 dim.touch(now: tick)
-                brightness.restore()
+                if !link.isScreenDark { brightness.restore() }
                 return
             }
             let wasDimmed = dim.isDimmed
@@ -91,11 +102,15 @@ struct RestScreenView: View {
             link.start()
             UIApplication.shared.isIdleTimerDisabled = true
         }
+        .onChange(of: link.isScreenDark) { _, isDark in
+            if isDark { brightness.dim() } else { brightness.restore() }
+        }
         .onChange(of: scenePhase) { _, phase in
             UIApplication.shared.isIdleTimerDisabled = (phase == .active)
             if phase == .active {
                 dim.touch(now: Date())
                 link.start()
+                if link.isScreenDark { brightness.dim() }
             } else {
                 brightness.restore()
             }
