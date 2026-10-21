@@ -132,11 +132,28 @@ public sealed record EncodeSettings
 
 ---
 
+### Task 3b: Monitor do iPhone em 100% (resolução ÷ 1,75) — antes da rodada 2
+
+**Files:** `tools/vdd/vdd_settings.xml`; `windows/src/TelaDois.Core/Display/VirtualDisplay.cs` (ou um helper puro novo `VirtualMonitorSize`); `windows/src/TelaDois.Core/Video/VideoFeedFactory.cs`; `windows/tools/TelaDois.LatencyBench/` (opção `--monitor-size`); testes.
+
+**Interfaces:**
+- Produces: `public static (int Width, int Height) VirtualMonitorSize.For(int iphoneWidth, int iphoneHeight)` = (w ÷ 1,75, h ÷ 1,75), cada um arredondado para o **par mais próximo** (2556×1179 → 1460×674; 2796×1290 → 1598×738; 2622×1206 → 1498×690; 2868×1320 → 1638×754; 2736×1260 → 1564×720).
+
+- [ ] **Step 1:** `vdd_settings.xml`: acrescentar os 5 modos da tabela acima a 60 Hz (manter os antigos). Conferir XML.
+- [ ] **Step 2:** testes do `VirtualMonitorSize.For` com a tabela; `VideoFeedFactory` passa a chamar `Attach(VirtualMonitorSize.For(hello))` (teste com o `FakeVirtualMonitor`: o `Attach` recebe 1460×674 para o HELLO 2556×1179; o `CONFIG` sai com o tamanho do modo escolhido, par).
+- [ ] **Step 3:** ao ligar, registrar a escala efetiva do monitor virtual (`GetDpiForMonitor` com `MDT_EFFECTIVE_DPI` pelo `HMONITOR` do monitor; 96 = 100%) e, se ≠ 100%, um evento `ScaleNotNative` que a bandeja mostra num balão uma vez ("Para o programa do trabalho funcionar em todas as telas, deixe o monitor do iPhone em 100%: Configurações → Tela → monitor do iPhone → Escala 100%"). Não mudar a escala por conta própria.
+- [ ] **Step 4:** bancada: opção `--monitor-size LxA` (padrão: `VirtualMonitorSize.For(2556,1179)` = 1460×674, igual ao app); o relatório mostra o tamanho usado.
+- [ ] **Step 5:** `dotnet test` verde, 0 avisos; commit `feat: monitor do iPhone em 100% com a resolução ÷ 1,75 (programas antigos e menos atraso)`; push; `windows-test` verde.
+- [ ] **Step 6 (usuário):** rodar `toolsdd\instalar-vdd.ps1` como administrador de novo (modos novos no driver).
+
+---
+
 ### Task 4: Medir e escolher (PC do trabalho, Intel)
 
 **Files:**
 - Create: `docs/medicoes/2026-10-21-bancada-5d.md`
 
+- [ ] **Rodada 2 (depois da Task 3b e do instalador):** `dotnet run --project windows/tools/TelaDois.LatencyBench -c Release -- --variants base,veryfast-scale1920,veryfast-scale2of3,x264,mf,fps30 --out builds/bancada-rodada-2` no monitor 1460×674 (padrão novo); comparar com a matriz 1 (2556×1178).
 - [ ] **Step 1 (combinar com o usuário: ~10 min sem mexer no PC):** `dotnet run --project windows/tools/TelaDois.LatencyBench -c Release -- --seconds 15` (todas as variantes × 3 cenários, monitor virtual).
 - [ ] **Step 2:** Escrever no `docs/medicoes/2026-10-21-bancada-5d.md` a tabela completa (do `resultados.csv`), as condições (PC, placa, driver, FFmpeg, resolução) e a comparação de cada variante com a `base`.
 - [ ] **Step 3:** Montar 1–3 combinações com as variantes que ajudaram (ex.: `lowpower+cbr+nodup`) como variantes novas em `BenchVariants` (commit pequeno), rodar só elas + `base` de novo, e registrar.

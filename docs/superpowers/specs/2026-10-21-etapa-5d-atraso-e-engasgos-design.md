@@ -59,6 +59,25 @@ O caminho atual (`AVSampleBufferDisplayLayer`, decodificação por hardware, exi
 - **Uso:** o usuário confirma mouse parado → mexer, rolagem de site e podcast (boca × som).
 - Testes do PC e do iPhone verdes, zero avisos; `windows-test`, `ios-test` e `ios-build` verdes no SHA final.
 
+## 7. Monitor do iPhone em 100% com resolução menor (decisão do usuário, 2026-10-21)
+
+**Problema medido:** com o monitor virtual em 2556×1179 e escala 175%, o programa de trabalho do usuário (GO-Global 6.2.2 da GraphOn, cliente de 32 bits sem suporte a DPI por monitor, que mostra o Domínio Web em janelas "seamless") fica preso no monitor pequeno: arrastado para o principal, volta. Reabrir o programa com o monitor do iPhone ligado não resolve. **Causa confirmada pelo usuário:** com o monitor do iPhone em escala 100%, o programa anda por todas as telas — o problema é a **escala misturada** entre monitores.
+
+**Decisão:** o monitor virtual passa a ter a resolução que o usuário enxerga hoje em 175%, mas em **escala 100%**: tamanho = resolução do iPhone ÷ 1,75, arredondado para o par mais próximo. O texto fica do mesmo tamanho, o Windows não mistura escalas e cada imagem tem ~1/3 dos pixels (menos atraso e engasgo — a bancada mostrou que comprimir menor tira os picos).
+
+| iPhone (paisagem) | Monitor virtual (100%) |
+|---|---|
+| 2556×1179 (15/16, 15/16 Pro) | **1460×674** |
+| 2796×1290 (15/16 Plus/Pro Max) | 1598×738 |
+| 2622×1206 (16 Pro) | 1498×690 |
+| 2868×1320 (16 Pro Max) | 1638×754 |
+| 2736×1260 (17) | 1564×720 |
+
+- O `vdd_settings.xml` ganha esses modos (a 60 Hz); o instalador precisa rodar de novo (administrador) em cada PC.
+- O TelaDois liga o monitor no modo calculado a partir do `HELLO` (iPhone ÷ 1,75, par). O `CONFIG` leva esse tamanho; o iPhone amplia com aspecto (≈1,75×), como já faz.
+- A escala do monitor virtual no Windows tem de ser **100%**. O Windows guarda a escala por monitor (`HKCU\Control Panel\Desktop\PerMonitorSettings`); o usuário já pôs 100% neste PC. O TelaDois registra no log a escala efetiva do monitor ao ligar e, se não for 100%, mostra um balão uma vez explicando como mudar (Configurações → Tela → monitor do iPhone → Escala 100%).
+- A bancada mede também nesse modo (rodada 2) para escolher a compressão nele.
+
 ## 6. Fora desta etapa
 
 - 5e — atrasar o som só do programa que está no iPhone (desenho já discutido; depende do número final).
