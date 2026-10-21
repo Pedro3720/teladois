@@ -10,20 +10,6 @@ internal abstract class SceneWindow(Rectangle bounds) : BenchForm(bounds)
     public abstract void Advance();
 }
 
-internal static class SceneWindows
-{
-    /// <summary>Distância da cena à borda esquerda do monitor: depois do marcador (16 + 64 + 16).</summary>
-    public const int Left = MarkerCode.Offset * 2 + MarkerCode.Size;
-
-    /// <summary>A cena do cenário em <paramref name="monitor"/>; <c>null</c> no cenário parado (só o marcador).</summary>
-    public static SceneWindow? Create(string scenario, Rectangle monitor) => scenario switch
-    {
-        BenchScenarios.Scroll => new ScrollWindow(new Rectangle(monitor.X + Left, monitor.Y, monitor.Width / 3, monitor.Height)),
-        BenchScenarios.Video => new NoiseWindow(new Rectangle(monitor.X + Left, monitor.Y + MarkerCode.Offset, monitor.Width / 2, monitor.Height / 2)),
-        _ => null,
-    };
-}
-
 /// <summary>Texto (Segoe UI 16) rolando 4 px por volta, como uma página rolando.</summary>
 internal sealed class ScrollWindow : SceneWindow
 {

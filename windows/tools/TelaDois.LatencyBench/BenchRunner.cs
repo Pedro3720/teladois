@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text;
-using TelaDois.Core.Display;
 using TelaDois.Core.Video;
 
 namespace TelaDois.LatencyBench;
@@ -31,14 +30,15 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
         var notes = new List<string>();
         var profile = EncoderProfiles.Candidates.FirstOrDefault(p => p.Id == variant.ProfileId)
             ?? throw new InvalidOperationException($"perfil de compressão desconhecido: {variant.ProfileId}");
-        var bounds = new Win32DisplayApi(persist: false).Bounds(output.DeviceName)
-            ?? throw new InvalidOperationException($"não deu para saber a posição de {output.DeviceName} no desktop");
-        var monitor = new Rectangle(bounds.X, bounds.Y, output.Width, output.Height);
+        // Posição no desktop pela DXGI (só leitura): a bancada nunca cria uma API que muda monitores.
+        var monitor = new Rectangle(output.Left, output.Top, output.Width, output.Height);
 
         // 1–3: janelas, captura e encerramento.
         var arrivals = new List<Arrival>();
-        var h264 = new MemoryStream();
+        // Os pedaços que o leitor já entregou (sem copiar nem crescer um buffer no meio da captura).
+        var h264 = new List<byte[]>();
         IReadOnlyList<DrawEvent> draws;
+        string loops;
         using (var screen = BenchScreen.Start(scenario, monitor))
         {
             try
@@ -56,8 +56,10 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
             finally
             {
                 draws = screen.Stop();
+                loops = screen.LoopSummary();
             }
         }
+        notes.Add($"{variant.Name}/{scenario}: marcador: {loops}");
         if (arrivals.Count == 0)
         {
             return new BenchRun(null, notes);
@@ -66,17 +68,18 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
         // 4: descomprime só o recorte do marcador, no tamanho codificado.
         var (encodedWidth, encodedHeight) = profile.EncodedSize(output.Width, output.Height, variant.Settings);
         var crop = MarkerCode.CropIn(output.Width, output.Height, encodedWidth, encodedHeight);
-        var bytes = h264.ToArray();
-        var (codes, decodeErrors) = await DecodeMarkersAsync(bytes, crop, ct);
+        var totalBytes = h264.Sum(chunk => (long)chunk.Length);
+        var (codes, decodeErrors) = await DecodeMarkersAsync(h264, crop, ct);
         if (decodeErrors.Length > 0)
         {
             notes.Add($"descompressão para ler o marcador: {decodeErrors}");
         }
 
-        // 6: imagens decodificadas ≠ chegadas → avisa e casa pelo menor dos dois.
-        if (codes.Count != arrivals.Count)
+        // 6: imagens decodificadas ≠ chegadas → rodada suspeita (tabela, CSV e observação); casa pelo menor dos dois.
+        var suspect = codes.Count != arrivals.Count;
+        if (suspect)
         {
-            notes.Add($"{variant.Name}/{scenario}: {codes.Count} imagens decodificadas para {arrivals.Count} chegadas; casando as {Math.Min(codes.Count, arrivals.Count)} primeiras");
+            notes.Add($"{variant.Name}/{scenario}: SUSPEITA — {codes.Count} imagens decodificadas para {arrivals.Count} chegadas; casando as {Math.Min(codes.Count, arrivals.Count)} primeiras");
         }
         var count = Math.Min(codes.Count, arrivals.Count);
 
@@ -90,7 +93,7 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
         // 5: atrasos (só a imagem onde cada código novo aparece), estatística, CSV e print.
         var latencies = LatencyMatcher.Match(draws, measured.Take(matchedCodes.Count).ToList(), matchedCodes, Stopwatch.Frequency);
         var samples = LatencyMatcher.FirstChangesOnly(matchedCodes, latencies);
-        var result = BenchStats.Compute(variant.Name, scenario, measured, samples, Stopwatch.Frequency);
+        var result = BenchStats.Compute(variant.Name, scenario, measured, samples, Stopwatch.Frequency) with { Suspect = suspect };
 
         Directory.CreateDirectory(outDir);
         var csv = Path.Combine(outDir, "resultados.csv");
@@ -102,11 +105,12 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
         if (scenario == BenchScenarios.Scroll && count > 0)
         {
             var png = Path.Combine(outDir, $"{variant.Name}-rolagem.png");
-            var pngErrors = await SaveFrameAsync(bytes, count / 2, png, ct);
-            notes.Add(File.Exists(png) ? $"imagem do meio da rolagem: {png}" : $"não deu para gravar {png}: {pngErrors}");
+            var filter = BenchLayout.ScrollPngFilter(count / 2, output.Width, output.Height, encodedWidth, encodedHeight);
+            var pngErrors = await SaveFrameAsync(h264, filter, png, ct);
+            notes.Add(File.Exists(png) ? $"imagem do meio da rolagem (só o marcador e a janela de rolagem): {png}" : $"não deu para gravar {png}: {pngErrors}");
         }
 
-        notes.Add($"{variant.Name}/{scenario}: {encodedWidth}×{encodedHeight}, marcador em {crop.X},{crop.Y} ({crop.Width}×{crop.Height}), {draws.Count} trocas do marcador, {arrivals.Count} imagens ({skip} no aquecimento de {Warmup.TotalSeconds:0} s), {bytes.Length / 1024} KB");
+        notes.Add($"{variant.Name}/{scenario}: {encodedWidth}×{encodedHeight}, marcador em {crop.X},{crop.Y} ({crop.Width}×{crop.Height}), {draws.Count} trocas do marcador, {arrivals.Count} imagens ({skip} no aquecimento de {Warmup.TotalSeconds:0} s), {totalBytes / 1024} KB");
         return new BenchRun(result, notes);
     }
 
@@ -130,7 +134,7 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
     /// processo se a primeira imagem não vier em 10 s ou se o fluxo parar depois do prazo. Devolve o fim do stderr.
     /// </summary>
     private async Task<string> CaptureAsync(
-        IReadOnlyList<string> args, TimeSpan duration, List<Arrival> arrivals, MemoryStream h264, CancellationToken ct)
+        IReadOnlyList<string> args, TimeSpan duration, List<Arrival> arrivals, List<byte[]> h264, CancellationToken ct)
     {
         var process = _runner.Start(ffmpegPath, args);
         await using (process)
@@ -149,7 +153,7 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
                         break;
                     }
                     arrivals.Add(new Arrival(now, unit.IsKeyframe, unit.Data.Length));
-                    h264.Write(unit.Data);
+                    h264.Add(unit.Data);
                     if (arrivals.Count == 1)
                     {
                         Interlocked.Exchange(ref deadline, now + (long)((Warmup + duration).TotalSeconds * Stopwatch.Frequency));
@@ -201,7 +205,7 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
 
     /// <summary>Descomprime o H.264 gravado e lê o código do marcador em cada imagem, na ordem.</summary>
     private async Task<(List<int?> Codes, string Errors)> DecodeMarkersAsync(
-        byte[] h264, (int X, int Y, int Width, int Height) crop, CancellationToken ct)
+        IReadOnlyList<byte[]> h264, (int X, int Y, int Width, int Height) crop, CancellationToken ct)
     {
         var frameSize = crop.Width * crop.Height;
         var codes = new List<int?>();
@@ -225,21 +229,24 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
         return (codes, errors);
     }
 
-    /// <summary>Grava a imagem <paramref name="index"/> (cores, tamanho codificado) em PNG.</summary>
-    private Task<string> SaveFrameAsync(byte[] h264, int index, string path, CancellationToken ct)
+    /// <summary>
+    /// Grava em PNG uma imagem recortada por <paramref name="filter"/> (<see cref="BenchLayout.ScrollPngFilter"/>: só as
+    /// janelas da bancada, nunca o resto da tela do usuário).
+    /// </summary>
+    private Task<string> SaveFrameAsync(IReadOnlyList<byte[]> h264, string filter, string path, CancellationToken ct)
     {
         string[] args =
         [
             "-nostdin", "-hide_banner", "-loglevel", "error",
             "-f", "h264", "-i", "pipe:0",
-            "-vf", $"select=eq(n\\,{index})",
+            "-filter_complex", filter,
             "-fps_mode", "passthrough", "-frames:v", "1", "-update", "1", "-y", path,
         ];
         return RunPipeAsync(args, h264, output => output.CopyToAsync(Stream.Null, ct), ct);
     }
 
-    /// <summary>Roda o FFmpeg com <paramref name="input"/> no stdin e o stdout para <paramref name="readOutput"/>; devolve o stderr.</summary>
-    private async Task<string> RunPipeAsync(IReadOnlyList<string> args, byte[] input, Func<Stream, Task> readOutput, CancellationToken ct)
+    /// <summary>Roda o FFmpeg com <paramref name="input"/> (em pedaços) no stdin e o stdout para <paramref name="readOutput"/>; devolve o stderr.</summary>
+    private async Task<string> RunPipeAsync(IReadOnlyList<string> args, IReadOnlyList<byte[]> input, Func<Stream, Task> readOutput, CancellationToken ct)
     {
         var info = new ProcessStartInfo(ffmpegPath)
         {
@@ -276,7 +283,10 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
             {
                 try
                 {
-                    await process.StandardInput.BaseStream.WriteAsync(input, ct);
+                    foreach (var chunk in input)
+                    {
+                        await process.StandardInput.BaseStream.WriteAsync(chunk, ct);
+                    }
                 }
                 catch (IOException)
                 {

@@ -3,7 +3,13 @@ using System.Runtime.InteropServices;
 namespace TelaDois.Core.Video;
 
 /// <summary>Um monitor como o <c>ddagrab</c> o enxerga: índice de saída DXGI do adaptador 0.</summary>
-public sealed record DisplayOutput(int OutputIndex, string DeviceName, int Width, int Height, bool IsPrimary);
+public sealed record DisplayOutput(int OutputIndex, string DeviceName, int Width, int Height, bool IsPrimary)
+{
+    /// <summary>Canto superior esquerdo no desktop (pixels físicos, da DXGI); só leitura, para posicionar janelas.</summary>
+    public int Left { get; init; }
+
+    public int Top { get; init; }
+}
 
 /// <summary>
 /// Lista os monitores pela DXGI. A ordem das saídas DXGI <b>não</b> segue o <c>\\.\DISPLAYn</c>
@@ -59,7 +65,11 @@ public static unsafe class DisplayCatalog
                                 new string(desc.DeviceName),
                                 desc.Right - desc.Left,
                                 desc.Bottom - desc.Top,
-                                desc.Left == 0 && desc.Top == 0));
+                                desc.Left == 0 && desc.Top == 0)
+                            {
+                                Left = desc.Left,
+                                Top = desc.Top,
+                            });
                         }
                     }
                     finally

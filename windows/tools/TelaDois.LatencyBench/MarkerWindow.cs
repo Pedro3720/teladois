@@ -54,6 +54,8 @@ internal class BenchForm : Form
     {
         base.OnShown(e);
         Bounds = _target;
+        // Com ShowWithoutActivation o WinForms não aplica o TopMost ao mostrar (medido: "SEM TOPMOST" até o 1º Raise).
+        Raise();
     }
 
     protected override void WndProc(ref Message m)
@@ -90,15 +92,21 @@ internal sealed class MarkerWindow(Rectangle bounds) : BenchForm(bounds)
     }
 }
 
+
 /// <summary>
-/// O que a bancada mostra no monitor medido: o marcador no canto superior esquerdo + (16, 16) e a cena do cenário. Uma
-/// thread de interface (STA) mantém as janelas; uma thread de fundo anda uma volta por composição do DWM:
-/// <c>DwmFlush()</c> → anota o desenho anterior (já composto) → troca o código se o cenário pede → pinta pela thread da
-/// interface. Só os desenhos que trocaram o código viram <see cref="DrawEvent"/>.
+/// O que a bancada mostra no monitor medido: o marcador e a cena do cenário (<see cref="BenchLayout"/>). Uma thread de
+/// interface (STA) mantém as janelas; uma thread de fundo troca o marcador:
+/// <list type="bullet">
+/// <item><c>rolagem</c>/<c>video</c>: uma volta por composição do DWM — <c>DwmFlush()</c> → anota o desenho anterior
+/// (já composto) → troca o código, anda a cena e pinta.</item>
+/// <item><c>parado</c>: nada é repintado entre as trocas (a tela fica parada de verdade); a cada 2 s pelo
+/// <c>Stopwatch</c>: troca o código, pinta, <c>DwmFlush()</c> e anota.</item>
+/// </list>
+/// Um <c>DwmFlush</c> que falha não vira desenho (não se sabe quando foi composto): só conta como falha.
 /// </summary>
 internal sealed class BenchScreen : IDisposable
 {
-    private const int StillChanges = 6;
+    private static readonly long StillInterval = Stopwatch.Frequency * 2;
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmFlush();
@@ -115,6 +123,10 @@ internal sealed class BenchScreen : IDisposable
     private Exception? _uiError;
     private volatile bool _stop;
     private bool _stopped;
+    private int _loops;
+    private int _flushFailures;
+    private long _loopStart;
+    private long _loopEnd;
 
     private BenchScreen(string scenario, Rectangle monitor)
     {
@@ -125,17 +137,22 @@ internal sealed class BenchScreen : IDisposable
         _loop = new Thread(Animate) { IsBackground = true, Name = "bancada-marcador", Priority = ThreadPriority.Highest };
     }
 
-    /// <summary>Abre as janelas em <paramref name="monitor"/> (pixels físicos do desktop) e começa a trocar o marcador.</summary>
+    /// <summary>
+    /// Abre as janelas em <paramref name="monitor"/> (pixels físicos do desktop) e começa a trocar o marcador. Se não abrir,
+    /// fecha o que já tinha sido criado antes de lançar.
+    /// </summary>
     public static BenchScreen Start(string scenario, Rectangle monitor)
     {
         var screen = new BenchScreen(scenario, monitor);
         screen._ui.Start();
         if (!screen._ready.Wait(TimeSpan.FromSeconds(10)))
         {
+            screen.Dispose();
             throw new InvalidOperationException("as janelas da bancada não abriram em 10 s");
         }
         if (screen._uiError is { } error)
         {
+            screen.Dispose();
             throw new InvalidOperationException($"as janelas da bancada não abriram: {error.Message}", error);
         }
         screen._loop.Start();
@@ -155,7 +172,10 @@ internal sealed class BenchScreen : IDisposable
             }
             try
             {
-                _marker?.Invoke(() => _context?.ExitThread());
+                if (_marker is { IsHandleCreated: true } marker)
+                {
+                    marker.Invoke(() => _context?.ExitThread());
+                }
             }
             catch (Exception e) when (e is ObjectDisposedException or InvalidOperationException)
             {
@@ -163,6 +183,15 @@ internal sealed class BenchScreen : IDisposable
             _ui.Join(TimeSpan.FromSeconds(5));
         }
         return _draws;
+    }
+
+    /// <summary>Voltas por segundo medidas (desenhos anotados ÷ tempo real da volta) e falhas do DwmFlush, para o relatório.</summary>
+    public string LoopSummary()
+    {
+        var seconds = (_loopEnd - _loopStart) / (double)Stopwatch.Frequency;
+        var drawsPerSecond = seconds > 0 ? _draws.Count / seconds : 0;
+        var failures = _flushFailures == 0 ? "" : $", DwmFlush falhou {_flushFailures} vez(es)";
+        return $"{_draws.Count} desenhos em {seconds:0.0} s = {drawsPerSecond:0.0} voltas/s ({_loops} voltas){failures}";
     }
 
     public void Dispose()
@@ -182,12 +211,21 @@ internal sealed class BenchScreen : IDisposable
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
     private static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(Point point);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+
     private struct WindowRect
     {
         public int Left, Top, Right, Bottom;
     }
 
-    /// <summary>Onde as janelas estão de verdade (posição, visível, sempre por cima), para o relatório.</summary>
+    /// <summary>
+    /// Onde as janelas estão de verdade (posição, visível, sempre por cima) e se outra janela está na frente do centro
+    /// delas (<c>COBERTA</c>, por <c>WindowFromPoint</c>), para o relatório.
+    /// </summary>
     public string Describe()
     {
         static string One(string name, Form? form)
@@ -196,11 +234,17 @@ internal sealed class BenchScreen : IDisposable
             {
                 return "";
             }
+            const int exStyle = -20;
+            const long topmost = 0x00000008;
+            const uint root = 2; // GA_ROOT
             var handle = form.Handle;
             GetWindowRect(handle, out var r);
-            const long topmost = 0x00000008;
-            var top = ((long)GetWindowLongPtr(handle, -20) & topmost) != 0;
-            return $"{name} {r.Left},{r.Top} {r.Right - r.Left}×{r.Bottom - r.Top}{(IsWindowVisible(handle) ? "" : " INVISÍVEL")}{(top ? "" : " SEM TOPMOST")}";
+            var top = ((long)GetWindowLongPtr(handle, exStyle) & topmost) != 0;
+            var centre = new Point((r.Left + r.Right) / 2, (r.Top + r.Bottom) / 2);
+            var front = WindowFromPoint(centre);
+            var covered = front != IntPtr.Zero && GetAncestor(front, root) != handle;
+            return $"{name} {r.Left},{r.Top} {r.Right - r.Left}×{r.Bottom - r.Top}" +
+                $"{(IsWindowVisible(handle) ? "" : " INVISÍVEL")}{(top ? "" : " SEM TOPMOST")}{(covered ? " COBERTA" : "")}";
         }
         try
         {
@@ -213,13 +257,19 @@ internal sealed class BenchScreen : IDisposable
         }
     }
 
+    private static Rectangle On(Rectangle monitor, PixelRect r) => new(monitor.X + r.X, monitor.Y + r.Y, r.Width, r.Height);
+
     private void RunUi()
     {
         try
         {
-            _marker = new MarkerWindow(new Rectangle(
-                _monitor.X + MarkerCode.Offset, _monitor.Y + MarkerCode.Offset, MarkerCode.Size, MarkerCode.Size));
-            _scene = SceneWindows.Create(_scenario, _monitor);
+            _marker = new MarkerWindow(On(_monitor, BenchLayout.Marker));
+            _scene = _scenario switch
+            {
+                BenchScenarios.Scroll => new ScrollWindow(On(_monitor, BenchLayout.Scroll(_monitor.Width, _monitor.Height))),
+                BenchScenarios.Video => new NoiseWindow(On(_monitor, BenchLayout.Noise(_monitor.Width, _monitor.Height))),
+                _ => null,
+            };
             _scene?.Show();
             _marker.Show();
             _context = new ApplicationContext();
@@ -227,6 +277,8 @@ internal sealed class BenchScreen : IDisposable
         catch (Exception e)
         {
             _uiError = e;
+            _scene?.Dispose();
+            _marker?.Dispose();
             _ready.Set();
             return;
         }
@@ -244,66 +296,123 @@ internal sealed class BenchScreen : IDisposable
 
     private void Animate()
     {
-        var marker = _marker!;
-        var scene = _scene;
-        var still = _scenario == BenchScenarios.Still;
-        var stillInterval = Stopwatch.Frequency * 2;
-        var lastChange = Stopwatch.GetTimestamp();
-        var changes = 0;
-        var code = 0;
-        int? pending = 0; // o código 0 já foi pintado ao abrir
+        _loopStart = Stopwatch.GetTimestamp();
+        try
+        {
+            if (_scenario == BenchScenarios.Still)
+            {
+                AnimateStill();
+            }
+            else
+            {
+                AnimateEveryFrame();
+            }
+        }
+        finally
+        {
+            _loopEnd = Stopwatch.GetTimestamp();
+        }
+    }
+
+    private void AnimateEveryFrame()
+    {
         var raiseEvery = Stopwatch.Frequency;
         var lastRaise = 0L;
+        var code = 0;
+        int? pending = null; // o código 0 pintado ao abrir não é anotado (a 1ª imagem nunca é amostra)
         while (!_stop)
         {
-            if (DwmFlush() < 0)
-            {
-                Thread.Sleep(1);
-            }
+            var flushed = DwmFlush() >= 0;
             var now = Stopwatch.GetTimestamp();
             if (pending is { } drawn)
             {
-                _draws.Add(new DrawEvent(drawn, now));
-                pending = null;
+                if (flushed)
+                {
+                    _draws.Add(new DrawEvent(drawn, now));
+                }
+                else
+                {
+                    _flushFailures++;
+                }
             }
-            if (!still || (changes < StillChanges && now - lastChange >= stillInterval))
+            if (!flushed)
             {
-                code = (code + 1) & 0xFFFF;
-                pending = code;
-                lastChange = now;
-                changes++;
+                Thread.Sleep(1);
             }
-            var paint = code;
+            code = (code + 1) & 0xFFFF;
+            pending = code;
             var raise = now - lastRaise >= raiseEvery;
             if (raise)
             {
                 lastRaise = now;
             }
-            try
-            {
-                // Repinta o marcador sempre (mesmo parado): a janela suja faz o DWM compor e o DwmFlush voltar a cada imagem.
-                marker.Invoke(() =>
-                {
-                    if (raise)
-                    {
-                        scene?.Raise();
-                        marker.Raise();
-                    }
-                    marker.Code = paint;
-                    marker.Invalidate();
-                    marker.Update();
-                    if (scene is not null)
-                    {
-                        scene.Advance();
-                        scene.Invalidate();
-                        scene.Update();
-                    }
-                });
-            }
-            catch (Exception e) when (e is ObjectDisposedException or InvalidOperationException)
+            _loops++;
+            if (!Paint(code, raise, advanceScene: true))
             {
                 return;
             }
+        }
+    }
+
+    private void AnimateStill()
+    {
+        var code = 0;
+        var next = Stopwatch.GetTimestamp() + StillInterval;
+        while (!_stop)
+        {
+            var wait = next - Stopwatch.GetTimestamp();
+            if (wait > 0)
+            {
+                Thread.Sleep((int)Math.Clamp(wait * 1000 / Stopwatch.Frequency, 1, 50));
+                continue;
+            }
+            code = (code + 1) & 0xFFFF;
+            _loops++;
+            if (!Paint(code, raise: true, advanceScene: false))
+            {
+                return;
+            }
+            if (DwmFlush() >= 0)
+            {
+                _draws.Add(new DrawEvent(code, Stopwatch.GetTimestamp()));
+            }
+            else
+            {
+                _flushFailures++;
+            }
+            next += StillInterval;
+        }
+    }
+
+    /// <summary>Pinta pela thread da interface; <c>false</c> se as janelas já fecharam.</summary>
+    private bool Paint(int code, bool raise, bool advanceScene)
+    {
+        var marker = _marker!;
+        var scene = _scene;
+        try
+        {
+            marker.Invoke(() =>
+            {
+                if (raise)
+                {
+                    scene?.Raise();
+                    marker.Raise();
+                }
+                marker.Code = code;
+                marker.Invalidate();
+                marker.Update();
+                if (advanceScene && scene is not null)
+                {
+                    scene.Advance();
+                    scene.Invalidate();
+                    scene.Update();
+                }
+            });
+            return true;
+        }
+        catch (Exception e) when (e is ObjectDisposedException or InvalidOperationException)
+        {
+            return false;
         }
     }
 }

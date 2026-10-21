@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 using TelaDois.Core.Display;
 using TelaDois.Core.Video;
@@ -42,27 +43,47 @@ internal static class Program
         }
 
         using var cts = new CancellationTokenSource();
+        using var cleanedUp = new ManualResetEventSlim();
         Console.CancelKeyPress += (_, e) =>
         {
             e.Cancel = true; // deixa o finally desligar o monitor virtual
             Console.WriteLine("interrompendo…");
             cts.Cancel();
         };
+        // Fechar o console pelo X (SIGHUP) ou desligar/sair da sessão (SIGTERM): mesmo cancelamento do Ctrl+C. O Windows
+        // encerra o processo quando o tratador volta, então ele espera a limpeza (desligar o monitor virtual) por até 4 s.
+        void OnSignal(PosixSignalContext context)
+        {
+            context.Cancel = true;
+            cts.Cancel();
+            cleanedUp.Wait(TimeSpan.FromSeconds(4));
+        }
+        using var hangup = PosixSignalRegistration.Create(PosixSignal.SIGHUP, OnSignal);
+        using var terminate = PosixSignalRegistration.Create(PosixSignal.SIGTERM, OnSignal);
 
         var runs = new List<BenchRun>();
         try
         {
-            var code = options.Monitor is { } name
+            return options.Monitor is { } name
                 ? await RunOnPhysicalAsync(name, options, ffmpeg, runs, cts.Token)
                 : await RunOnVirtualAsync(options, ffmpeg, runs, cts.Token);
-            Report(options, runs);
-            return code;
         }
         catch (OperationCanceledException)
         {
-            Report(options, runs);
             Console.Error.WriteLine("interrompido");
             return 130;
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"a bancada parou: {e.Message}");
+            runs.Add(new BenchRun(null, [$"a bancada parou: {e.Message}"]));
+            return 1;
+        }
+        finally
+        {
+            // O relatório sempre é gravado, com o que já foi medido.
+            Report(options, runs);
+            cleanedUp.Set();
         }
     }
 
@@ -72,7 +93,7 @@ internal static class Program
         var output = outputs.FirstOrDefault(o => string.Equals(o.DeviceName, name, StringComparison.OrdinalIgnoreCase));
         if (output is null)
         {
-            Console.Error.WriteLine($"{name} não está na DXGI (adaptador 0). Monitores: {string.Join(", ", outputs.Select(Describe))}");
+            Fail(runs, $"{name} não está na DXGI (adaptador 0). Monitores: {string.Join(", ", outputs.Select(Describe))}");
             return 1;
         }
         await RunAllAsync(output, options, ffmpeg, runs, ct);
@@ -87,7 +108,7 @@ internal static class Program
 
         if (display.Find() is { } existing && display.IsAttached(existing))
         {
-            Console.Error.WriteLine($"o monitor virtual {existing} já está no desktop (o TelaDois está estendendo?): desligue a Segunda Tela antes de medir");
+            Fail(runs, $"o monitor virtual {existing} já está no desktop (o TelaDois está estendendo?): desligue a Segunda Tela antes de medir");
             return 1;
         }
 
@@ -96,7 +117,7 @@ internal static class Program
         {
             if (!await display.PowerOnAsync(ct))
             {
-                Console.Error.WriteLine("não deu para ativar o monitor virtual (instale com tools\\vdd\\instalar-vdd.ps1)");
+                Fail(runs, "não deu para ativar o monitor virtual (instale com tools\\vdd\\instalar-vdd.ps1)");
                 return 1;
             }
             (device, var mode) = display.Attach(IphoneWidth, IphoneHeight);
@@ -104,7 +125,7 @@ internal static class Program
             var output = await WaitForOutputAsync(device, ct);
             if (output is null)
             {
-                Console.Error.WriteLine($"o monitor virtual {device} não apareceu na DXGI em {OutputWait.TotalSeconds:0} s");
+                Fail(runs, $"o monitor virtual {device} não apareceu na DXGI em {OutputWait.TotalSeconds:0} s");
                 return 1;
             }
             await RunAllAsync(output, options, ffmpeg, runs, ct);
@@ -144,6 +165,10 @@ internal static class Program
     private static async Task RunAllAsync(DisplayOutput output, BenchOptions options, string ffmpeg, List<BenchRun> runs, CancellationToken ct)
     {
         Console.WriteLine($"medindo {Describe(output)}: {options.Variants.Count} variante(s) × {options.Scenarios.Count} cenário(s), {options.Duration.TotalSeconds:0} s cada");
+        if (options.Scenarios.Contains(BenchScenarios.Still) && options.Duration < TimeSpan.FromSeconds(60))
+        {
+            Console.WriteLine("  aviso: o cenário parado dá 1 amostra a cada 2 s; para números firmes use --seconds 60");
+        }
         var runner = new BenchRunner(ffmpeg, line => Console.WriteLine($"  {line}"));
         foreach (var variant in options.Variants)
         {
@@ -151,7 +176,16 @@ internal static class Program
             {
                 ct.ThrowIfCancellationRequested();
                 Console.WriteLine($"→ {variant.Name} / {scenario}");
-                var run = await runner.RunAsync(variant, scenario, output, options.Duration, options.OutDir, ct);
+                BenchRun run;
+                try
+                {
+                    run = await runner.RunAsync(variant, scenario, output, options.Duration, options.OutDir, ct);
+                }
+                catch (Exception e) when (e is not OperationCanceledException)
+                {
+                    // Uma rodada que falha vira observação; as outras seguem.
+                    run = new BenchRun(null, [$"{variant.Name}/{scenario}: falhou: {e.Message}"]);
+                }
                 runs.Add(run);
                 foreach (var note in run.Notes)
                 {
@@ -165,22 +199,25 @@ internal static class Program
         }
     }
 
+    /// <summary>Erro que impede medir: vai para o console e para o relatório.</summary>
+    private static void Fail(List<BenchRun> runs, string message)
+    {
+        Console.Error.WriteLine(message);
+        runs.Add(new BenchRun(null, [message]));
+    }
+
     private static void Report(BenchOptions options, List<BenchRun> runs)
     {
-        if (runs.Count == 0)
-        {
-            return;
-        }
         var text = new StringBuilder();
         text.AppendLine($"Bancada de latência — {DateTime.Now.ToString("yyyy-MM-dd HH:mm", Pt)} — {options.Duration.TotalSeconds:0} s por rodada");
-        string[] header = ["variante", "cenário", "mediana", "p95", "máx", "fps", ">33", ">50", "IDR KB", "Mbit/s", "medidas", "faltas"];
+        string[] header = ["variante", "cenário", "mediana", "p95", "máx", "fps", ">33", ">50", "IDR KB", "Mbit/s", "medidas", "faltas", "suspeita"];
         var rows = new List<string[]> { header };
         foreach (var r in runs.Select(run => run.Result).OfType<BenchResult>())
         {
             rows.Add([
                 r.Variant, r.Scenario, Ms(r.MedianMs), Ms(r.P95Ms), Ms(r.MaxMs), r.Fps.ToString("0.0", Pt),
                 r.GapsOver33.ToString(Pt), r.GapsOver50.ToString(Pt), r.AvgKeyframeKB.ToString("0", Pt), r.Mbps.ToString("0.0", Pt),
-                r.Measured.ToString(Pt), r.Missing.ToString(Pt),
+                r.Measured.ToString(Pt), r.Missing.ToString(Pt), r.Suspect ? "SIM" : "",
             ]);
         }
         var widths = Enumerable.Range(0, header.Length).Select(c => rows.Max(row => row[c].Length)).ToArray();
@@ -191,7 +228,7 @@ internal static class Program
         var failed = runs.Count(run => run.Result is null);
         if (failed > 0)
         {
-            text.AppendLine($"{failed} rodada(s) sem medida (ver as observações acima).");
+            text.AppendLine($"{failed} rodada(s) sem medida (ver as observações abaixo).");
         }
         text.AppendLine("Observações:");
         foreach (var note in runs.SelectMany(run => run.Notes))
