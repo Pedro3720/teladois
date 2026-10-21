@@ -1,11 +1,221 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.Text;
+using TelaDois.Core.Display;
+using TelaDois.Core.Video;
+
 namespace TelaDois.LatencyBench;
 
+/// <summary>
+/// Bancada de latência: mede captura + compressão com a linha real do FFmpeg. Sem <c>--monitor</c> liga o monitor virtual
+/// como o app (2556×1179) e sempre o desliga no fim; com <c>--monitor</c> usa aquele monitor e não mexe em nenhum.
+/// </summary>
 internal static class Program
 {
-    private static int Main(string[] args)
+    private const int IphoneWidth = 2556;
+    private const int IphoneHeight = 1179;
+    private static readonly TimeSpan OutputWait = TimeSpan.FromSeconds(10);
+    private static readonly CultureInfo Pt = CultureInfo.GetCultureInfo("pt-BR");
+
+    private static async Task<int> Main(string[] args)
     {
-        // A bancada de verdade entra na Task 3.
-        Console.WriteLine("TelaDois.LatencyBench: ainda sem execução (Task 3).");
-        return args.Length == 0 ? 0 : 1;
+        Console.OutputEncoding = Encoding.UTF8;
+        Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+
+        BenchOptions options;
+        try
+        {
+            options = BenchOptions.Parse(args);
+        }
+        catch (ArgumentException e)
+        {
+            Console.Error.WriteLine(e.Message);
+            Console.Error.WriteLine(BenchOptions.Usage);
+            return 2;
+        }
+
+        var ffmpeg = FfmpegLocator.Find();
+        if (ffmpeg is null)
+        {
+            Console.Error.WriteLine("ffmpeg.exe não está no PATH (winget install Gyan.FFmpeg)");
+            return 1;
+        }
+
+        using var cts = new CancellationTokenSource();
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true; // deixa o finally desligar o monitor virtual
+            Console.WriteLine("interrompendo…");
+            cts.Cancel();
+        };
+
+        var runs = new List<BenchRun>();
+        try
+        {
+            var code = options.Monitor is { } name
+                ? await RunOnPhysicalAsync(name, options, ffmpeg, runs, cts.Token)
+                : await RunOnVirtualAsync(options, ffmpeg, runs, cts.Token);
+            Report(options, runs);
+            return code;
+        }
+        catch (OperationCanceledException)
+        {
+            Report(options, runs);
+            Console.Error.WriteLine("interrompido");
+            return 130;
+        }
     }
+
+    private static async Task<int> RunOnPhysicalAsync(string name, BenchOptions options, string ffmpeg, List<BenchRun> runs, CancellationToken ct)
+    {
+        var outputs = DisplayCatalog.Enumerate();
+        var output = outputs.FirstOrDefault(o => string.Equals(o.DeviceName, name, StringComparison.OrdinalIgnoreCase));
+        if (output is null)
+        {
+            Console.Error.WriteLine($"{name} não está na DXGI (adaptador 0). Monitores: {string.Join(", ", outputs.Select(Describe))}");
+            return 1;
+        }
+        await RunAllAsync(output, options, ffmpeg, runs, ct);
+        return 0;
+    }
+
+    private static async Task<int> RunOnVirtualAsync(BenchOptions options, string ffmpeg, List<BenchRun> runs, CancellationToken ct)
+    {
+        static void Log(string line) => Console.WriteLine($"  [monitor virtual] {line}");
+        var display = new VirtualDisplay(Win32DisplayApi.ForVirtualMonitor(), new DriverPipe(),
+            new ScheduledTaskSwitch(new SystemProcessRunner(), Log), Log);
+
+        if (display.Find() is { } existing && display.IsAttached(existing))
+        {
+            Console.Error.WriteLine($"o monitor virtual {existing} já está no desktop (o TelaDois está estendendo?): desligue a Segunda Tela antes de medir");
+            return 1;
+        }
+
+        string? device = null;
+        try
+        {
+            if (!await display.PowerOnAsync(ct))
+            {
+                Console.Error.WriteLine("não deu para ativar o monitor virtual (instale com tools\\vdd\\instalar-vdd.ps1)");
+                return 1;
+            }
+            (device, var mode) = display.Attach(IphoneWidth, IphoneHeight);
+            Log($"{device} ligado em {mode.Width}×{mode.Height}@{mode.Frequency}");
+            var output = await WaitForOutputAsync(device, ct);
+            if (output is null)
+            {
+                Console.Error.WriteLine($"o monitor virtual {device} não apareceu na DXGI em {OutputWait.TotalSeconds:0} s");
+                return 1;
+            }
+            await RunAllAsync(output, options, ffmpeg, runs, ct);
+            return 0;
+        }
+        finally
+        {
+            if (device is not null)
+            {
+                try
+                {
+                    display.Detach(device);
+                }
+                catch (Exception e)
+                {
+                    Log($"não deu para tirar do desktop: {e.Message}");
+                }
+            }
+            await display.PowerOffAsync(CancellationToken.None);
+        }
+    }
+
+    private static async Task<DisplayOutput?> WaitForOutputAsync(string device, CancellationToken ct)
+    {
+        var waited = Stopwatch.StartNew();
+        while (waited.Elapsed < OutputWait)
+        {
+            if (DisplayCatalog.Enumerate().FirstOrDefault(o => string.Equals(o.DeviceName, device, StringComparison.OrdinalIgnoreCase)) is { } output)
+            {
+                return output;
+            }
+            await Task.Delay(100, ct);
+        }
+        return null;
+    }
+
+    private static async Task RunAllAsync(DisplayOutput output, BenchOptions options, string ffmpeg, List<BenchRun> runs, CancellationToken ct)
+    {
+        Console.WriteLine($"medindo {Describe(output)}: {options.Variants.Count} variante(s) × {options.Scenarios.Count} cenário(s), {options.Duration.TotalSeconds:0} s cada");
+        var runner = new BenchRunner(ffmpeg, line => Console.WriteLine($"  {line}"));
+        foreach (var variant in options.Variants)
+        {
+            foreach (var scenario in options.Scenarios)
+            {
+                ct.ThrowIfCancellationRequested();
+                Console.WriteLine($"→ {variant.Name} / {scenario}");
+                var run = await runner.RunAsync(variant, scenario, output, options.Duration, options.OutDir, ct);
+                runs.Add(run);
+                foreach (var note in run.Notes)
+                {
+                    Console.WriteLine($"  {note}");
+                }
+                if (run.Result is { } r)
+                {
+                    Console.WriteLine($"  mediana {Ms(r.MedianMs)}, p95 {Ms(r.P95Ms)}, {r.Fps.ToString("0.0", Pt)} imagens/s, medidas {r.Measured}, faltas {r.Missing}");
+                }
+            }
+        }
+    }
+
+    private static void Report(BenchOptions options, List<BenchRun> runs)
+    {
+        if (runs.Count == 0)
+        {
+            return;
+        }
+        var text = new StringBuilder();
+        text.AppendLine($"Bancada de latência — {DateTime.Now.ToString("yyyy-MM-dd HH:mm", Pt)} — {options.Duration.TotalSeconds:0} s por rodada");
+        string[] header = ["variante", "cenário", "mediana", "p95", "máx", "fps", ">33", ">50", "IDR KB", "Mbit/s", "medidas", "faltas"];
+        var rows = new List<string[]> { header };
+        foreach (var r in runs.Select(run => run.Result).OfType<BenchResult>())
+        {
+            rows.Add([
+                r.Variant, r.Scenario, Ms(r.MedianMs), Ms(r.P95Ms), Ms(r.MaxMs), r.Fps.ToString("0.0", Pt),
+                r.GapsOver33.ToString(Pt), r.GapsOver50.ToString(Pt), r.AvgKeyframeKB.ToString("0", Pt), r.Mbps.ToString("0.0", Pt),
+                r.Measured.ToString(Pt), r.Missing.ToString(Pt),
+            ]);
+        }
+        var widths = Enumerable.Range(0, header.Length).Select(c => rows.Max(row => row[c].Length)).ToArray();
+        foreach (var row in rows)
+        {
+            text.AppendLine(string.Join(" | ", row.Select((cell, c) => c < 2 ? cell.PadRight(widths[c]) : cell.PadLeft(widths[c]))));
+        }
+        var failed = runs.Count(run => run.Result is null);
+        if (failed > 0)
+        {
+            text.AppendLine($"{failed} rodada(s) sem medida (ver as observações acima).");
+        }
+        text.AppendLine("Observações:");
+        foreach (var note in runs.SelectMany(run => run.Notes))
+        {
+            text.AppendLine($"- {note}");
+        }
+
+        Console.WriteLine();
+        Console.Write(text);
+        try
+        {
+            Directory.CreateDirectory(options.OutDir);
+            var report = Path.Combine(options.OutDir, "relatorio.txt");
+            File.AppendAllText(report, text + Environment.NewLine);
+            Console.WriteLine();
+            Console.WriteLine($"arquivos: {Path.Combine(options.OutDir, "resultados.csv")}, {report} e as imagens *-rolagem.png em {options.OutDir}");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"não deu para gravar o relatório em {options.OutDir}: {e.Message}");
+        }
+    }
+
+    private static string Ms(double value) => value.ToString("0.0", Pt) + " ms";
+
+    private static string Describe(DisplayOutput o) => $"{o.DeviceName} {o.Width}×{o.Height} (saída {o.OutputIndex})";
 }

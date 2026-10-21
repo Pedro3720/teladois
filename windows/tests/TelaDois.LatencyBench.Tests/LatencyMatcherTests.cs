@@ -69,4 +69,43 @@ public class LatencyMatcherTests
         Assert.Empty(LatencyMatcher.Match([], [], [], Tps));
         Assert.Null(LatencyMatcher.Match([], [new Arrival(1, false, 1)], new int?[] { 1 }, Tps)[0]);
     }
+
+    [Fact]
+    public void FirstChangesOnlyKeepsTheFrameWhereANewCodeShowsUp()
+    {
+        // o ddagrab repete imagens com a tela parada: só a 1ª de cada código novo é amostra de atraso
+        var codes = new int?[] { 1, 1, 1, 2, 2, 3 };
+        var latencies = new double?[] { 900, 920, 940, 30, 46, 28 };
+
+        Assert.Equal(new double?[] { 30, 28 }, LatencyMatcher.FirstChangesOnly(codes, latencies));
+    }
+
+    [Fact]
+    public void FirstChangesOnlyDropsTheFirstFrameBecauseItsChangeWasNotSeen()
+    {
+        var codes = new int?[] { 5, 6, 7 };
+        var latencies = new double?[] { 1000, 20, 21 };
+
+        Assert.Equal(new double?[] { 20, 21 }, LatencyMatcher.FirstChangesOnly(codes, latencies));
+    }
+
+    [Fact]
+    public void FirstChangesOnlyKeepsUnreadableFramesAsMissingAndComparesWithTheLastReadCode()
+    {
+        // null antes do 1º código lido não conta; null depois conta (falta); 4 depois do null ainda é repetição
+        var codes = new int?[] { null, 4, null, 4, 5 };
+        var latencies = new double?[] { null, 500, null, 520, 25 };
+
+        Assert.Equal(new double?[] { null, 25 }, LatencyMatcher.FirstChangesOnly(codes, latencies));
+    }
+
+    [Fact]
+    public void FirstChangesOnlyUsesTheShorterOfTheTwoLists()
+    {
+        var codes = new int?[] { 1, 2, 3, 4 };
+        var latencies = new double?[] { 10, 20 };
+
+        Assert.Equal(new double?[] { 20 }, LatencyMatcher.FirstChangesOnly(codes, latencies));
+        Assert.Empty(LatencyMatcher.FirstChangesOnly([], []));
+    }
 }
