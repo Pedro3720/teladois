@@ -14,7 +14,6 @@ public sealed record BenchRun(BenchResult? Result, IReadOnlyList<string> Notes);
 /// </summary>
 public sealed class BenchRunner(string ffmpegPath, Action<string> log)
 {
-    private const ushort Fps = 60;
     private static readonly TimeSpan WindowsSettle = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan FirstFrameLimit = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan StopGrace = TimeSpan.FromSeconds(3);
@@ -48,7 +47,7 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
             {
                 await Task.Delay(WindowsSettle, ct);
                 notes.Add($"{variant.Name}/{scenario}: janelas: {screen.Describe()}");
-                var args = FfmpegArguments.ForMonitor(profile, output.OutputIndex, Fps, variant.Settings);
+                var args = FfmpegArguments.ForMonitor(profile, output.OutputIndex, variant.Fps, variant.Settings);
                 var errors = await CaptureAsync(args, duration, arrivals, h264, idealTicks, ct);
                 endWindows = screen.Describe();
                 notes.Add($"{variant.Name}/{scenario}: janelas no fim: {endWindows}");

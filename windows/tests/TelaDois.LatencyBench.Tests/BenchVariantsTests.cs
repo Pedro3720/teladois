@@ -10,7 +10,11 @@ public class BenchVariantsTests
     [Fact]
     public void NamesAreUniqueAndInTheAgreedOrder()
     {
-        string[] expected = ["base", "lowpower", "veryfast", "cbr", "intrarefresh", "gop4", "nodup", "download", "scale1920", "scale2of3"];
+        string[] expected =
+        [
+            "base", "lowpower", "veryfast", "cbr", "intrarefresh", "gop4", "nodup", "download", "scale1920", "scale2of3",
+            "veryfast-scale1920", "veryfast-scale2of3", "x264", "mf", "fps30",
+        ];
         Assert.Equal(expected, BenchVariants.All.Select(v => v.Name).ToArray());
         Assert.Equal(BenchVariants.All.Count, BenchVariants.All.Select(v => v.Name).Distinct().Count());
     }
@@ -68,5 +72,52 @@ public class BenchVariantsTests
 
         Assert.Equal(4, Get("gop4").Settings.GopSeconds);
         Assert.Equal(":dup_frames=0", Get("nodup").Settings.GrabOptions);
+    }
+
+    [Theory]
+    [InlineData("veryfast-scale1920", 1920, 886)]
+    [InlineData("veryfast-scale2of3", 1704, 786)]
+    public void CombinationsJoinVeryfastAndTheScale(string name, int width, int height)
+    {
+        var v = Get(name);
+        Assert.Equal("qsv-hwmap", v.ProfileId);
+        Assert.Equal((width, height), v.Settings.ScaleTo);
+        Assert.Equal("veryfast", Assert.Single(v.Settings.CodecOptionOverrides).Value);
+        Assert.Equal("-preset", Assert.Single(v.Settings.CodecOptionOverrides).Key);
+        // O resto igual à base: só preset e tamanho mudam.
+        Assert.Equal(EncodeSettings.Default with { CodecOptionOverrides = v.Settings.CodecOptionOverrides, ScaleTo = (width, height) }, v.Settings);
+        Assert.Equal(BenchVariant.DefaultFps, v.Fps);
+    }
+
+    [Theory]
+    [InlineData("x264")]
+    [InlineData("mf")]
+    public void SoftwareAndMediaFoundationDiagnosticsUseTheirProfileWithDefaults(string name)
+    {
+        var v = Get(name);
+        Assert.Equal(name, v.ProfileId);
+        Assert.Equal(EncodeSettings.Default, v.Settings);
+        Assert.Equal(BenchVariant.DefaultFps, v.Fps);
+    }
+
+    [Fact]
+    public void Fps30CapturesAndEncodesAt30WithTheSameGopInSeconds()
+    {
+        var v = Get("fps30");
+        Assert.Equal("qsv-hwmap", v.ProfileId);
+        Assert.Equal(EncodeSettings.Default, v.Settings);
+        Assert.Equal(30, v.Fps);
+
+        var profile = EncoderProfiles.Candidates.Single(p => p.Id == v.ProfileId);
+        var args = FfmpegArguments.ForMonitor(profile, 2, v.Fps, v.Settings);
+        Assert.Equal("ddagrab=output_idx=2:framerate=30:draw_mouse=1", args[args.ToList().IndexOf("-i") + 1]);
+        Assert.Equal("60", args[args.ToList().IndexOf("-g") + 1]);
+    }
+
+    [Fact]
+    public void OnlyFps30ChangesTheFrameRate()
+    {
+        Assert.Equal(60, BenchVariant.DefaultFps);
+        Assert.All(BenchVariants.All.Where(v => v.Name != "fps30"), v => Assert.Equal(BenchVariant.DefaultFps, v.Fps));
     }
 }
