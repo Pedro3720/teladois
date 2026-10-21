@@ -195,6 +195,6 @@ public class BenchVariantsTests
         var line = string.Join(' ', FfmpegArguments.ForMonitor(profile, 2, v.Fps, v.Settings));
         Assert.Contains(fragment, line, StringComparison.Ordinal);
         Assert.Contains(" -g 120 ", line, StringComparison.Ordinal);
-        Assert.EndsWith("-bsf:v h264_metadata=aud=insert -f h264 pipe:1", line, StringComparison.Ordinal);
+        Assert.EndsWith("-bsf:v h264_metadata=aud=insert -flush_packets 1 -stats_mux_pre pipe:1 -stats_mux_pre_fmt TD {size} -f h264 pipe:1", line, StringComparison.Ordinal);
     }
 }

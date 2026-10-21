@@ -19,9 +19,27 @@ public class FfmpegArgumentsTests
         Assert.Equal(
             "-nostdin -hide_banner -loglevel warning -f lavfi -i ddagrab=output_idx=1:framerate=60:draw_mouse=1 " +
             "-vf hwmap=derive_device=qsv,format=qsv,vpp_qsv=cw=trunc(iw/2)*2:ch=trunc(ih/2)*2 -c:v h264_qsv -low_power 0 -look_ahead 0 -async_depth 1 -preset veryfast " +
-            "-bf 0 -g 120 -b:v 12M -maxrate 20M -bufsize 4M -bsf:v h264_metadata=aud=insert -f h264 pipe:1",
+            "-bf 0 -g 120 -b:v 12M -maxrate 20M -bufsize 4M -bsf:v h264_metadata=aud=insert -flush_packets 1 -stats_mux_pre pipe:1 -stats_mux_pre_fmt TD {size} -f h264 pipe:1",
             string.Join(' ', args));
     }
+
+    /// <summary>
+    /// Toda linha de captura sai emoldurada: o FFmpeg escreve "TD &lt;tamanho&gt;" antes de cada pacote no mesmo stdout, e o
+    /// AccessUnitReader entrega a imagem no último byte (não espera o AUD da seguinte).
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(AllProfileIds))]
+    public void EveryProfileLineIsFramedOnStdout(string id)
+    {
+        var p = EncoderProfiles.Candidates.Single(x => x.Id == id);
+        var args = FfmpegArguments.ForMonitor(p, 2, 60);
+        Assert.Equal(
+            ["-bsf:v", "h264_metadata=aud=insert", "-flush_packets", "1", "-stats_mux_pre", "pipe:1", "-stats_mux_pre_fmt", AccessUnitReader.FramePrefix + "{size}", "-f", "h264", "pipe:1"],
+            args.Skip(args.Count - 11));
+    }
+
+    [Fact]
+    public void ProbeIsNotFramed() => Assert.DoesNotContain("-stats_mux_pre", FfmpegArguments.Probe(Qsv, 0));
 
     [Fact]
     public void ProfileWithoutFilterHasNoVf()
@@ -113,7 +131,7 @@ public class FfmpegArgumentsTests
         }
         parts.Add("-c:v " + p.Codec);
         parts.AddRange(p.Options);
-        parts.Add("-bf 0 -g 120 -b:v 12M -maxrate 20M -bufsize 4M -bsf:v h264_metadata=aud=insert -f h264 pipe:1");
+        parts.Add("-bf 0 -g 120 -b:v 12M -maxrate 20M -bufsize 4M -bsf:v h264_metadata=aud=insert -flush_packets 1 -stats_mux_pre pipe:1 -stats_mux_pre_fmt TD {size} -f h264 pipe:1");
         return string.Join(' ', parts);
     }
 
@@ -278,7 +296,7 @@ public class FfmpegArgumentsTests
         Assert.Equal(
             "-nostdin -hide_banner -loglevel warning -filter_complex ddagrab=output_idx=2:framerate=60:draw_mouse=1," +
             "hwmap=derive_device=qsv,format=qsv,vpp_qsv=cw=trunc(iw/2)*2:ch=trunc(ih/2)*2 -c:v h264_qsv -low_power 0 -look_ahead 0 -async_depth 1 -preset veryfast " +
-            "-bf 0 -g 120 -b:v 12M -maxrate 20M -bufsize 4M -bsf:v h264_metadata=aud=insert -f h264 pipe:1",
+            "-bf 0 -g 120 -b:v 12M -maxrate 20M -bufsize 4M -bsf:v h264_metadata=aud=insert -flush_packets 1 -stats_mux_pre pipe:1 -stats_mux_pre_fmt TD {size} -f h264 pipe:1",
             string.Join(' ', args));
         Assert.Contains("-filter_complex ddagrab=output_idx=2:framerate=60:draw_mouse=1,hwmap=", string.Join(' ', FfmpegArguments.Probe(Qsv, 2, s)));
     }

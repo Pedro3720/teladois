@@ -14,9 +14,25 @@ public static class FfmpegArguments
         {
             args.AddRange(["-frames:v", count.ToString()]);
         }
-        args.AddRange(["-bsf:v", "h264_metadata=aud=insert", "-f", "h264", "pipe:1"]);
+        args.AddRange(["-bsf:v", "h264_metadata=aud=insert"]);
+        args.AddRange(Framing);
+        args.AddRange(["-f", "h264", "pipe:1"]);
         return args;
     }
+
+    /// <summary>
+    /// Emoldura o H.264 no próprio stdout: antes de cada pacote o FFmpeg escreve "TD &lt;tamanho&gt;\n", e o
+    /// <see cref="AccessUnitReader"/> entrega a imagem no último byte em vez de esperar o AUD da seguinte (~16 ms a 60/s).
+    /// Por que é exato (FFmpeg 9.0, release/9.0): <c>-stats_mux_pre</c> é escrito em fftools/ffmpeg_mux.c
+    /// <c>write_packet</c> logo antes do <c>av_interleaved_write_frame</c> do mesmo pacote, já depois do
+    /// <c>-bsf:v</c>, com <c>{size}</c> = <c>pkt-&gt;size</c> e <c>avio_flush</c> no fim da linha (ffmpeg_enc.c
+    /// <c>enc_stats_write</c>); o muxer <c>h264</c> cru escreve o pacote como veio (rawenc.c <c>ff_raw_write_packet</c>) e
+    /// <c>-flush_packets 1</c> esvazia o buffer a cada pacote (mux.c <c>flush_if_needed</c>). Tudo na thread do muxer, então
+    /// linha e pacote saem em ordem; com 1 fluxo o intercalador não segura pacotes. O pacote fica igual ao do fluxo cru
+    /// (conferido com testsrc2 em libx264, h264_qsv e h264_mf). Não vale para a sondagem (saída null).
+    /// </summary>
+    private static readonly string[] Framing =
+        ["-flush_packets", "1", "-stats_mux_pre", "pipe:1", "-stats_mux_pre_fmt", AccessUnitReader.FramePrefix + "{size}"];
 
     /// <summary>Codifica 3 imagens do monitor e descarta: código 0 = a compressão funciona neste PC.</summary>
     public static IReadOnlyList<string> Probe(EncoderProfile profile, int outputIndex, EncodeSettings? settings = null)

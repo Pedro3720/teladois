@@ -98,8 +98,9 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
         var samples = LatencyMatcher.FirstChangesOnly(matchedCodes, latencies);
         var thresholds = StillThresholds.For(encodedWidth, encodedHeight);
 
-        // Leitor ideal: a mesma conta com a chegada no último byte de cada imagem (o AccessUnitReader espera o AUD da
-        // seguinte para entregá-la). Mostra quanto essa espera soma ao atraso do app.
+        // Leitor ideal: a mesma conta com a chegada no último byte de cada imagem. Até a Task 5 da 5d o AccessUnitReader
+        // esperava o AUD da seguinte (~16 ms a 60/s); com o fluxo emoldurado ele entrega no último byte, e as duas contas
+        // devem coincidir (diferença ≈ 0 mostra que o leitor do app não soma atraso).
         double? idealMedian = null, idealP95 = null;
         StillSplit? idealStill = null;
         var idealOk = idealTicks.Count == arrivals.Count && idealTicks.All(t => t is not null);

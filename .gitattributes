@@ -11,3 +11,4 @@
 *.css   text eol=lf
 *.json  text eol=lf
 *.h264 binary
+*.framed binary

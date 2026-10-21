@@ -25,7 +25,8 @@ public sealed record BenchResult(
 
     /// <summary>
     /// "Atraso com leitor ideal": o mesmo casamento, mas com a chegada no instante em que o último byte da imagem foi
-    /// lido do FFmpeg (o <c>AccessUnitReader</c> só a entrega quando chega o AUD da seguinte). Null se não deu para medir.
+    /// lido do FFmpeg. Com o fluxo emoldurado (Task 5 da 5d) é igual ao atraso do app; nas medições antigas o
+    /// <c>AccessUnitReader</c> só entregava a imagem no AUD da seguinte. Null se não deu para medir.
     /// </summary>
     public double? IdealMedianMs { get; init; }
 

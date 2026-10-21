@@ -20,6 +20,9 @@
 
   <ItemGroup>
     <None Include="..\..\..\ios\Packages\TelaDoisCore\Tests\TelaDoisCoreTests\Fixtures\bars-64x64.h264" Link="Fixtures\bars-64x64.h264" CopyToOutputDirectory="PreserveNewest" />
+    <!-- testsrc2 64×64, 5 imagens (I P P I P), libx264 com AUD: crua e emoldurada pelo -stats_mux_pre (mesmo comando). -->
+    <None Include="Fixtures\testsrc2-64x64.h264" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures\testsrc2-64x64.framed" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

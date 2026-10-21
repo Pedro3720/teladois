@@ -5,8 +5,8 @@ public sealed record ReadStamp(long EndOffset, long Ticks);
 
 /// <summary>
 /// Repassa as leituras de outro <see cref="Stream"/> e anota cada uma (<see cref="Reads"/>) e os bytes lidos
-/// (<see cref="RawBytes"/>): permite saber quando chegou o último byte de cada imagem, antes do
-/// <c>AccessUnitReader</c> entregá-la (ele espera o AUD da imagem seguinte).
+/// (<see cref="RawBytes"/>): permite saber quando chegou o último byte de cada imagem e comparar com quando o
+/// <c>AccessUnitReader</c> a entregou (no fluxo emoldurado do app, no mesmo instante; no cru, só no AUD da seguinte).
 /// </summary>
 public sealed class TimestampedStream(Stream inner, Func<long> clock) : Stream
 {
@@ -89,11 +89,15 @@ public static class ReaderTiming
 
     /// <summary>
     /// Fim (exclusivo, em bytes desde o começo do fluxo) de cada imagem que o <c>AccessUnitReader</c> entrega, pela mesma
-    /// regra dele: a imagem vai de um AUD até o próximo (ou o fim do fluxo) e só conta se tiver fatia (NAL 1–5). O
-    /// código de início de 4 bytes começa no zero extra.
+    /// regra dele: no fluxo emoldurado (começa por "TD "), o fim do pacote; no cru, de um AUD até o próximo (ou o fim do
+    /// fluxo). Só conta imagem com fatia (NAL 1–5). O código de início de 4 bytes começa no zero extra.
     /// </summary>
     public static IReadOnlyList<long> UnitEnds(ReadOnlySpan<byte> data)
     {
+        if (data.StartsWith("TD "u8))
+        {
+            return FramedUnitEnds(data);
+        }
         var ends = new List<long>();
         bool inUnit = false, hasSlice = false;
         for (var i = 0; i + 3 < data.Length; i++)
@@ -124,6 +128,52 @@ public static class ReaderTiming
             ends.Add(data.Length);
         }
         return ends;
+    }
+
+    /// <summary>
+    /// Fluxo emoldurado ("TD &lt;tamanho&gt;" + quebra de linha + pacote, ver <c>FfmpegArguments</c>): a imagem termina no
+    /// último byte do pacote e só conta se tiver fatia; um pacote cortado pelo fim (ou uma moldura inválida) encerra a
+    /// lista, como no <c>AccessUnitReader</c>.
+    /// </summary>
+    private static List<long> FramedUnitEnds(ReadOnlySpan<byte> data)
+    {
+        var ends = new List<long>();
+        var at = 0;
+        while (at < data.Length && data[at..].StartsWith("TD "u8))
+        {
+            var newline = data[at..].IndexOf((byte)'\n');
+            if (newline < 0 || !int.TryParse(data.Slice(at + 3, newline - 3), System.Globalization.NumberStyles.None, null, out var size))
+            {
+                break;
+            }
+            var packet = at + newline + 1;
+            if (packet + size > data.Length)
+            {
+                break;
+            }
+            if (HasSlice(data.Slice(packet, size)))
+            {
+                ends.Add(packet + size);
+            }
+            at = packet + size;
+        }
+        return ends;
+    }
+
+    private static bool HasSlice(ReadOnlySpan<byte> packet)
+    {
+        for (var i = 0; i + 3 < packet.Length; i++)
+        {
+            if (packet[i] == 0 && packet[i + 1] == 0 && packet[i + 2] == 1)
+            {
+                if ((packet[i + 3] & 0x1F) is >= 1 and <= 5)
+                {
+                    return true;
+                }
+                i += 2;
+            }
+        }
+        return false;
     }
 
     /// <summary>

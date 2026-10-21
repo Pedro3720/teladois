@@ -257,7 +257,7 @@ internal static class Program
         var text = new StringBuilder();
         text.AppendLine($"Bancada de latência — {DateTime.Now.ToString("yyyy-MM-dd HH:mm", Pt)} — {Durations(options)}");
         text.AppendLine($"Monitor: {s_measured ?? "nenhum (a medição não começou)"}");
-        text.AppendLine("(\"ideal\" = atraso com leitor ideal: a imagem contada no último byte lido do FFmpeg, sem esperar o AUD da seguinte)");
+        text.AppendLine("(\"ideal\" = atraso com leitor ideal: a imagem contada no último byte lido do FFmpeg, sem esperar o AUD da seguinte; desde a Task 5 da 5d o leitor do app faz o mesmo e as duas colunas devem coincidir)");
         string[] header = ["variante", "cenário", "mediana", "p95", "máx", "med. ideal", "p95 ideal", "fps", ">33", ">50", "IDR KB", "Mbit/s", "medidas", "faltas", "suspeita"];
         var rows = new List<string[]> { header };
         foreach (var r in runs.Select(run => run.Result).OfType<BenchResult>())

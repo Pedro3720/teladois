@@ -105,4 +105,41 @@ public class ReaderTimingTests
         }
         Assert.True(ideal[0] < yielded[0]); // a 1ª imagem esperou o AUD da 2ª
     }
+
+    // ---- Fluxo emoldurado (o do app desde a Task 5 da 5d): "TD <tamanho>\n" + pacote.
+
+    private static byte[] Framed(params byte[][] packets) =>
+        packets.SelectMany(p => System.Text.Encoding.ASCII.GetBytes($"TD {p.Length}\n").Concat(p)).ToArray();
+
+    private static byte[] Cat(params byte[][] parts) => parts.SelectMany(p => p).ToArray();
+
+    [Fact]
+    public void UnitEndsOfAFramedStreamAreThePacketEnds()
+    {
+        byte[][] packets = [Cat(Aud, Sps, Pps, Idr), Cat(Aud, Slice), Cat(Aud, Sps), Cat(Aud, Slice)];
+        var data = Cat(Framed(packets), Framed(Cat(Aud, Slice))[..^1]); // a última cortada pelo fim: o leitor descarta
+        var first = Framed(packets[0]).Length;
+        var second = first + Framed(packets[1]).Length;
+        var fourth = second + Framed(packets[2]).Length + Framed(packets[3]).Length; // a 3ª não tem fatia
+
+        Assert.Equal([first, second, fourth], ReaderTiming.UnitEnds(data));
+        Assert.Equal(3, new AccessUnitReader(new MemoryStream(data)).ReadAllAsync().ToBlockingEnumerable().Count());
+    }
+
+    [Fact]
+    public async Task OnAFramedStreamTheReaderYieldsAtTheIdealTime()
+    {
+        var data = Framed(Cat(Aud, Sps, Pps, Idr), Cat(Aud, Slice), Cat(Aud, Sps), Cat(Aud, Slice));
+        var clock = 0L;
+        var stamped = new TimestampedStream(new ChunkedStream(data, 5), () => ++clock);
+        var yielded = new List<long>();
+        await foreach (var _ in new AccessUnitReader(stamped).ReadAllAsync())
+        {
+            yielded.Add(clock);
+        }
+
+        var ideal = ReaderTiming.LastByteTicks(stamped.Reads, ReaderTiming.UnitEnds(stamped.RawBytes()));
+
+        Assert.Equal(yielded.Select(t => (long?)t), ideal);
+    }
 }
