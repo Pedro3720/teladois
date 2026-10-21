@@ -177,6 +177,31 @@ public class VirtualDisplayTests
     [Fact]
     public void ChooseModeWithoutModesIsNull() => Assert.Null(VirtualDisplay.ChooseMode([], 2556, 1179));
 
+    [Fact]
+    public void EffectiveDpiReadsOnlyTheDriverMonitor()
+    {
+        var api = TwoMonitorsAndDriver();
+        api.DpiList[Virtual] = 168;
+        api.DpiList[@"\\.\DISPLAY1"] = 120;
+        var display = new VirtualDisplay(api, new NoPipe());
+
+        Assert.Equal(168, display.EffectiveDpi(Virtual));
+        Assert.Null(display.EffectiveDpi(@"\\.\DISPLAY1")); // monitor físico: o TelaDois nem pergunta
+        Assert.Equal(new[] { Virtual }, api.DpiAsked);
+    }
+
+    [Fact]
+    public void EffectiveDpiNeverThrows()
+    {
+        var api = TwoMonitorsAndDriver();
+        api.DpiError = new InvalidOperationException("shcore falhou");
+        var log = new List<string>();
+        var display = new VirtualDisplay(api, new NoPipe(), log: log.Add);
+
+        Assert.Null(display.EffectiveDpi(Virtual));
+        Assert.Contains(log, line => line.Contains("shcore falhou", StringComparison.Ordinal));
+    }
+
     /// <summary>Medido no driver 25.7.23: sem gravar no registro, ligar falha com DISP_CHANGE_FAILED (-1).</summary>
     [Fact]
     public void TheVirtualMonitorApiWritesTheRegistry() => Assert.True(Win32DisplayApi.ForVirtualMonitor().Persist);

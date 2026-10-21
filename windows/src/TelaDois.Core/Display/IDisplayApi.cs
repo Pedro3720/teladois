@@ -18,6 +18,12 @@ public interface IDisplayApi
     /// <summary>Posição e tamanho atuais; <c>null</c> se o monitor não está no desktop.</summary>
     DisplayBounds? Bounds(string deviceName);
 
+    /// <summary>
+    /// DPI efetivo do monitor (<c>GetDpiForMonitor</c> com <c>MDT_EFFECTIVE_DPI</c>; 96 = escala 100%, 168 = 175%);
+    /// <c>null</c> se ele não está no desktop ou o Windows não respondeu.
+    /// </summary>
+    int? EffectiveDpi(string deviceName);
+
     /// <summary>Põe o monitor no desktop nessa posição e modo (largura 0 = tira do desktop). 0 = sucesso; senão o código <c>DISP_CHANGE_*</c>.</summary>
     int Apply(string deviceName, int x, int y, int width, int height, int frequency);
 }

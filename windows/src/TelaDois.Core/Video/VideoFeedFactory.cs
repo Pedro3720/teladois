@@ -33,6 +33,13 @@ public sealed class VideoFeedFactory(
     /// </summary>
     public event Action? DeviceSwitchMissing;
 
+    /// <summary>
+    /// O monitor virtual ligou com escala diferente de 100% (o valor vem em %, ex.: 175): programas antigos sem DPI por
+    /// monitor ficam presos num monitor quando o Windows mistura escalas. O TelaDois não muda a escala sozinho. Avisa a
+    /// cada abertura; quem assina decide se repete. Um assinante que lança não atrapalha a Segunda Tela.
+    /// </summary>
+    public event Action<int>? ScaleNotNative;
+
     /// <summary>Quanto esperar o monitor recém-ligado aparecer na DXGI (o IddCx pode levar segundos).</summary>
     public TimeSpan OutputWait { get; init; } = TimeSpan.FromSeconds(5);
 
@@ -169,6 +176,7 @@ public sealed class VideoFeedFactory(
                 return null;
             }
             log($"monitor virtual {device} na DXGI em {waited.ElapsedMilliseconds} ms (saída {output.OutputIndex})");
+            ReportScale(monitor, device);
             var profile = await probe.ChooseAsync(output.OutputIndex, ct);
             log($"estendendo para o iPhone: {device} ({output.Width}×{output.Height}) com {profile.Id}");
             return new VirtualMonitorFeed(Capture(probe, ffmpeg, profile, output), monitor, device, log);
@@ -199,6 +207,45 @@ public sealed class VideoFeedFactory(
             throw;
         }
     }
+
+    /// <summary>Registra a escala efetiva do monitor virtual recém-ligado (96 DPI = 100%) e avisa se não for 100%. Nunca lança.</summary>
+    private void ReportScale(IVirtualMonitor monitor, string device)
+    {
+        int? dpi;
+        try
+        {
+            dpi = monitor.EffectiveDpi(device);
+        }
+        catch (Exception e)
+        {
+            log($"não deu para ler a escala do monitor virtual {device}: {e.Message}");
+            return;
+        }
+        if (dpi is not { } value)
+        {
+            log($"não deu para ler a escala do monitor virtual {device}");
+            return;
+        }
+        var percent = (int)Math.Round(value * 100.0 / NativeDpi);
+        if (value == NativeDpi)
+        {
+            log($"escala do monitor virtual {device}: 100%");
+            return;
+        }
+        log($"escala do monitor virtual {device}: {percent}% ({value} DPI); deixe em 100% para programas antigos andarem por todas as telas " +
+            "(Configurações → Tela → monitor do iPhone → Escala)");
+        try
+        {
+            ScaleNotNative?.Invoke(percent);
+        }
+        catch (Exception e)
+        {
+            log($"o aviso da escala falhou: {e.Message}");
+        }
+    }
+
+    /// <summary>DPI da escala 100% no Windows.</summary>
+    private const int NativeDpi = 96;
 
     // Sem o ct da sessão: também roda depois do cancelamento.
     private Task PowerOffQuietlyAsync(IVirtualMonitor monitor) => VirtualMonitorFeed.PowerOffQuietlyAsync(monitor, log);

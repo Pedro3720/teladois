@@ -26,6 +26,8 @@ public sealed class Win32DisplayApi(bool persist) : IDisplayApi
     private const uint CdsUpdateRegistry = 0x1;
     private const uint CdsNoReset = 0x10000000;
     private const int EnumCurrentSettings = -1;
+    private const int MdtEffectiveDpi = 0;
+    private static readonly IntPtr PerMonitorAwareV2 = new(-4); // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
 
     public IReadOnlyList<DisplayDeviceInfo> Devices()
     {
@@ -81,6 +83,44 @@ public sealed class Win32DisplayApi(bool persist) : IDisplayApi
         return staged != 0 ? staged : ChangeDisplaySettingsEx(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
     }
 
+    /// <summary>
+    /// Acha o <c>HMONITOR</c> pelo nome (<c>EnumDisplayMonitors</c> + <c>GetMonitorInfo</c>) e lê o DPI efetivo. A thread
+    /// fica com reconhecimento de DPI por monitor (V2) só durante a consulta: sem isso, um processo sem esse modo recebe
+    /// sempre 96 do Windows.
+    /// </summary>
+    public int? EffectiveDpi(string deviceName)
+    {
+        var previous = SetThreadDpiAwarenessContext(PerMonitorAwareV2);
+        try
+        {
+            var found = IntPtr.Zero;
+            MonitorEnumProc callback = (monitor, _, _, _) =>
+            {
+                var info = new MonitorInfoEx { cbSize = Marshal.SizeOf<MonitorInfoEx>() };
+                if (GetMonitorInfo(monitor, ref info) && string.Equals(info.szDevice, deviceName, StringComparison.OrdinalIgnoreCase))
+                {
+                    found = monitor;
+                    return false;
+                }
+                return true;
+            };
+            EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, callback, IntPtr.Zero);
+            GC.KeepAlive(callback);
+            if (found == IntPtr.Zero)
+            {
+                return null;
+            }
+            return GetDpiForMonitor(found, MdtEffectiveDpi, out var dpiX, out _) == 0 && dpiX > 0 ? (int)dpiX : null;
+        }
+        finally
+        {
+            if (previous != IntPtr.Zero)
+            {
+                SetThreadDpiAwarenessContext(previous);
+            }
+        }
+    }
+
     private static DevMode NewMode() => new() { dmSize = (short)Marshal.SizeOf<DevMode>() };
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -128,6 +168,43 @@ public sealed class Win32DisplayApi(bool persist) : IDisplayApi
         public int dmPanningWidth;
         public int dmPanningHeight;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Rect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MonitorInfoEx
+    {
+        public int cbSize;
+        public Rect rcMonitor;
+        public Rect rcWork;
+        public uint dwFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string szDevice;
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private delegate bool MonitorEnumProc(IntPtr monitor, IntPtr hdc, IntPtr rect, IntPtr data);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip, MonitorEnumProc callback, IntPtr data);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetMonitorInfoW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfoEx info);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+
+    [DllImport("shcore.dll")]
+    private static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "EnumDisplayDevicesW")]
     [return: MarshalAs(UnmanagedType.Bool)]

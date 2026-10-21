@@ -386,6 +386,90 @@ public class VideoFeedFactoryTests
             && line.Contains("instalar-vdd.ps1", StringComparison.Ordinal));
     }
 
+    private static (VideoFeedFactory Factory, FakeVirtualMonitor Monitor, ConcurrentQueue<string> Log, ConcurrentQueue<int> Warned) ScaleCase(Action<FakeVirtualMonitor> setup)
+    {
+        var monitor = new FakeVirtualMonitor();
+        setup(monitor);
+        var log = new ConcurrentQueue<string>();
+        var warned = new ConcurrentQueue<int>();
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => monitor.Attached ? new[] { Main, Virtual } : new[] { Main }, () => null, log.Enqueue, monitor);
+        factory.ScaleNotNative += warned.Enqueue;
+        return (factory, monitor, log, warned);
+    }
+
+    [Fact]
+    public async Task LogsTheVirtualMonitorScaleAndDoesNotWarnAt100Percent()
+    {
+        var (factory, _, log, warned) = ScaleCase(m => m.Dpi = 96);
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Extend, feed!.Kind);
+        Assert.Contains(@"escala do monitor virtual \\.\DISPLAY3: 100%", log);
+        Assert.Empty(warned);
+    }
+
+    [Theory]
+    [InlineData(168, 175)]
+    [InlineData(120, 125)]
+    [InlineData(144, 150)]
+    public async Task WarnsWhenTheVirtualMonitorScaleIsNot100Percent(int dpi, int percent)
+    {
+        var (factory, _, log, warned) = ScaleCase(m => m.Dpi = dpi);
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Extend, feed!.Kind); // não muda a escala nem desiste de estender
+        Assert.Equal(new[] { percent }, warned);
+        Assert.Contains(log, line => line.StartsWith($@"escala do monitor virtual \\.\DISPLAY3: {percent}%", StringComparison.Ordinal)
+            && line.Contains("100%", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task UnknownScaleIsLoggedWithoutWarning()
+    {
+        var (factory, _, log, warned) = ScaleCase(m => m.Dpi = null);
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Extend, feed!.Kind);
+        Assert.Contains(log, line => line.Contains("não deu para ler a escala do monitor virtual", StringComparison.Ordinal));
+        Assert.Empty(warned);
+    }
+
+    [Fact]
+    public async Task ScaleFailuresNeverStopTheExtend()
+    {
+        var (factory, monitor, _, _) = ScaleCase(m => m.Dpi = 168);
+        monitor.DpiError = new InvalidOperationException("API do Windows falhou");
+        factory.ScaleNotNative += _ => throw new InvalidOperationException("assinante quebrado");
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Extend, feed!.Kind);
+
+        var (factory2, _, _, warned) = ScaleCase(m => m.Dpi = 168);
+        factory2.ScaleNotNative += _ => throw new InvalidOperationException("assinante quebrado");
+        await using var feed2 = await factory2.OpenAsync(Hello, CancellationToken.None);
+        Assert.Equal(VideoKind.Extend, feed2!.Kind);
+        Assert.Equal(new[] { 175 }, warned);
+    }
+
+    [Fact]
+    public async Task MirrorNeverAsksTheScale()
+    {
+        var monitor = FakeVirtualMonitor.Absent();
+        monitor.DpiError = new InvalidOperationException("não devia perguntar");
+        var warned = new ConcurrentQueue<int>();
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [Main, Side], () => null, _ => { }, monitor);
+        factory.ScaleNotNative += warned.Enqueue;
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Mirror, feed!.Kind);
+        Assert.Empty(warned);
+    }
+
     [Fact]
     public async Task ExtendsAtTheIphoneResolutionDividedByOnePointSevenFive()
     {

@@ -28,4 +28,10 @@ public interface IVirtualMonitor
     void Detach(string deviceName);
 
     bool IsAttached(string deviceName);
+
+    /// <summary>
+    /// DPI efetivo do monitor virtual no desktop (96 = escala 100%); <c>null</c> se não deu para ler ou se
+    /// <paramref name="deviceName"/> não é o monitor virtual. Nunca lança.
+    /// </summary>
+    int? EffectiveDpi(string deviceName);
 }

@@ -14,6 +14,15 @@ internal sealed class FakeDisplayApi : IDisplayApi
     public Dictionary<string, DisplayBounds> BoundsList { get; } = [];
     public List<(string Device, int X, int Y, int Width, int Height, int Frequency)> Applied { get; } = [];
 
+    /// <summary>DPI efetivo por monitor (96 = 100%); sem entrada = o Windows não respondeu.</summary>
+    public Dictionary<string, int> DpiList { get; } = [];
+
+    /// <summary>Monitores perguntados no <see cref="EffectiveDpi"/>, na ordem.</summary>
+    public List<string> DpiAsked { get; } = [];
+
+    /// <summary>Se definido, <see cref="EffectiveDpi"/> lança esta exceção.</summary>
+    public Exception? DpiError { get; set; }
+
     /// <summary>Código devolvido pelo <see cref="Apply"/> (0 = sucesso).</summary>
     public int Result { get; set; }
 
@@ -30,6 +39,12 @@ internal sealed class FakeDisplayApi : IDisplayApi
 
     public DisplayBounds? Bounds(string deviceName) =>
         BoundsList.TryGetValue(deviceName, out var bounds) ? bounds : null;
+
+    public int? EffectiveDpi(string deviceName)
+    {
+        DpiAsked.Add(deviceName);
+        return DpiError is { } error ? throw error : DpiList.TryGetValue(deviceName, out var dpi) ? dpi : null;
+    }
 
     public int Apply(string deviceName, int x, int y, int width, int height, int frequency)
     {

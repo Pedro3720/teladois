@@ -104,6 +104,14 @@ internal sealed class FakeVirtualMonitor : IVirtualMonitor
         Calls.Enqueue("Detach");
     }
 
+    /// <summary>Resposta do <see cref="EffectiveDpi"/> (96 = 100%; <c>null</c> = não deu para ler).</summary>
+    public int? Dpi { get; set; } = 96;
+
+    /// <summary>Se definido, <see cref="EffectiveDpi"/> lança (o contrato diz que não lança: o chamador se protege mesmo assim).</summary>
+    public Exception? DpiError { get; set; }
+
+    public int? EffectiveDpi(string deviceName) => DpiError is { } error ? throw error : Dpi;
+
     /// <summary>Se definido, <see cref="IsAttached"/> lança esta exceção (a API do Windows falhou).</summary>
     public Exception? IsAttachedError { get; set; }
 

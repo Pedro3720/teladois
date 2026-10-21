@@ -32,6 +32,7 @@ internal sealed class TrayContext : ApplicationContext
     private int _ffmpegWarned;
     private int _driverWarned;
     private int _switchWarned;
+    private int _scaleWarned;
 
     public TrayContext()
     {
@@ -87,6 +88,16 @@ internal sealed class TrayContext : ApplicationContext
             {
                 PostToUi(() => _icon.ShowBalloonTip(10000, "TelaDois",
                     "Rode o instalador do monitor virtual de novo (como administrador) para o Windows esconder o monitor quando ele não estiver em uso.", ToolTipIcon.Info));
+            }
+        };
+        video.ScaleNotNative += percent =>
+        {
+            // Uma vez por execução: a fábrica avisa a cada vez que liga o monitor; o TelaDois não muda a escala sozinho.
+            if (Interlocked.Exchange(ref _scaleWarned, 1) == 0)
+            {
+                PostToUi(() => _icon.ShowBalloonTip(15000, "TelaDois",
+                    $"O monitor do iPhone está em {percent}%. Para o programa do trabalho funcionar em todas as telas, deixe o monitor do iPhone em 100%: " +
+                    "Configurações → Tela → monitor do iPhone → Escala 100%", ToolTipIcon.Warning));
             }
         };
         // Os eventos chegam de threads diferentes e fora da trava (podem chegar fora de ordem): na thread da bandeja,

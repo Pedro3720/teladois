@@ -158,6 +158,23 @@ public sealed class VirtualDisplay(IDisplayApi api, IDriverPipe pipe, IDeviceSwi
         }
     }
 
+    /// <summary>
+    /// DPI efetivo do monitor do driver (96 = 100%). Só pergunta pelo monitor do driver; qualquer outro nome, ou uma falha
+    /// do Windows (registrada no log), dá <c>null</c>. Nunca lança.
+    /// </summary>
+    public int? EffectiveDpi(string deviceName)
+    {
+        try
+        {
+            return FindDriverDevice(deviceName) is { } device ? api.EffectiveDpi(device.DeviceName) : null;
+        }
+        catch (Exception ex)
+        {
+            Log($"não deu para ler a escala do monitor virtual: {ex.Message}");
+            return null;
+        }
+    }
+
     /// <summary>Ao abrir o TelaDois: tira do desktop o monitor virtual que sobrou ligado. Devolve qual, ou <c>null</c>.</summary>
     public string? DetachLeftover()
     {
