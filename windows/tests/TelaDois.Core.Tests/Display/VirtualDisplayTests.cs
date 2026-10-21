@@ -365,4 +365,78 @@ public class VirtualDisplayTests
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => display.PowerOnAsync(cts.Token));
     }
+
+    [Fact]
+    public async Task PowerOnDuringAPowerOffWaitsForItAndThenRunsTheTask()
+    {
+        // Um feed antigo ainda desativando: o ligar do feed novo não pode achar o monitor "presente" e seguir sem a tarefa,
+        // senão a desativação atrasada tira o monitor dele logo depois do Attach.
+        var api = TwoMonitorsAndDriver();
+        var hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var device = new FakeDeviceSwitch { HoldDisable = hold.Task, OnRun = enable => ChangeDriverPresenceLater(api, enable, 50) };
+        var (display, _) = Create(api, device);
+
+        var off = display.PowerOffAsync(CancellationToken.None);
+        await WaitForRunsAsync(device, 1);
+        var on = display.PowerOnAsync(CancellationToken.None);
+        await Task.Delay(200);
+        Assert.False(on.IsCompleted);
+        Assert.Equal(new[] { false }, device.Runs.ToArray());
+
+        hold.SetResult();
+        await off.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(await on.WaitAsync(TimeSpan.FromSeconds(5)));
+
+        Assert.Equal(new[] { false, true }, device.Runs.ToArray());
+        Assert.Equal(Virtual, display.Find());
+    }
+
+    [Fact]
+    public async Task PowerOnWaitingForAPowerOffHonoursTheCallerCancellation()
+    {
+        var api = TwoMonitorsAndDriver();
+        var hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var device = new FakeDeviceSwitch { HoldDisable = hold.Task, OnRun = enable => ChangeDriverPresenceLater(api, enable, 0) };
+        var (display, _) = Create(api, device);
+        using var cts = new CancellationTokenSource();
+
+        var off = display.PowerOffAsync(CancellationToken.None);
+        await WaitForRunsAsync(device, 1);
+        var on = display.PowerOnAsync(cts.Token);
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => on.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.False(off.IsCompleted); // o desligar não é cancelado por quem liga
+        hold.SetResult();
+        await off.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(new[] { false }, device.Runs.ToArray());
+    }
+
+    [Fact]
+    public async Task PowerOffDuringAPowerOnWaitsForIt()
+    {
+        var api = TwoMonitorsDriverDisabled();
+        var device = new FakeDeviceSwitch { OnRun = enable => ChangeDriverPresenceLater(api, enable, 300) };
+        var (display, _) = Create(api, device);
+
+        var on = display.PowerOnAsync(CancellationToken.None);
+        await WaitForRunsAsync(device, 1);
+        var off = display.PowerOffAsync(CancellationToken.None);
+
+        Assert.True(await on.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.False(off.IsCompleted);
+        await off.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(new[] { true, false }, device.Runs.ToArray());
+        Assert.Null(display.Find());
+    }
+
+    private static async Task WaitForRunsAsync(FakeDeviceSwitch device, int count)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (device.Runs.Count < count)
+        {
+            Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), "a tarefa do Windows não foi disparada");
+            await Task.Delay(10);
+        }
+    }
 }

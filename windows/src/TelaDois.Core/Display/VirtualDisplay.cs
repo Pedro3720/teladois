@@ -23,14 +23,32 @@ public sealed class VirtualDisplay(IDisplayApi api, IDriverPipe pipe, IDeviceSwi
     /// <summary>Intervalo entre as consultas ao Windows durante as esperas.</summary>
     public TimeSpan PollInterval { get; init; } = TimeSpan.FromMilliseconds(100);
 
+    // Ligar e desligar um de cada vez, de qualquer origem (feed novo, feed antigo saindo, bandeja): um ligar durante um
+    // desligar acharia o monitor ainda listado e seguiria sem a tarefa, e a desativação atrasada o tiraria logo depois.
+    private readonly SemaphoreSlim _power = new(1, 1);
+
     public Task<bool> IsInstalledAsync(CancellationToken ct) => pipe.PingAsync(ct);
 
     /// <summary>
     /// Garante o monitor do driver presente no Windows: já presente → <c>true</c> na hora; senão ativa o dispositivo pela
     /// tarefa e espera até <see cref="PowerOnWait"/>. <c>false</c> sem as tarefas, com a tarefa recusada ou se o monitor não
-    /// apareceu. Não mexe em nenhum monitor (pôr no desktop é o <see cref="Attach"/>). Só lança o cancelamento de <paramref name="ct"/>.
+    /// apareceu. Não mexe em nenhum monitor (pôr no desktop é o <see cref="Attach"/>). Espera um desligar em andamento
+    /// terminar antes. Só lança o cancelamento de <paramref name="ct"/>.
     /// </summary>
     public async Task<bool> PowerOnAsync(CancellationToken ct)
+    {
+        await _power.WaitAsync(ct);
+        try
+        {
+            return await PowerOnInTurnAsync(ct);
+        }
+        finally
+        {
+            _power.Release();
+        }
+    }
+
+    private async Task<bool> PowerOnInTurnAsync(CancellationToken ct)
     {
         if (TryFind() is not null)
         {
@@ -58,9 +76,22 @@ public sealed class VirtualDisplay(IDisplayApi api, IDriverPipe pipe, IDeviceSwi
 
     /// <summary>
     /// Desativa o dispositivo do driver (só com as tarefas) e espera o monitor sumir até <see cref="PowerOffWait"/>.
-    /// Sem as tarefas, não faz nada. Só lança o cancelamento de <paramref name="ct"/>.
+    /// Sem as tarefas, não faz nada. Espera um ligar em andamento terminar antes. Só lança o cancelamento de <paramref name="ct"/>.
     /// </summary>
     public async Task PowerOffAsync(CancellationToken ct)
+    {
+        await _power.WaitAsync(ct);
+        try
+        {
+            await PowerOffInTurnAsync(ct);
+        }
+        finally
+        {
+            _power.Release();
+        }
+    }
+
+    private async Task PowerOffInTurnAsync(CancellationToken ct)
     {
         if (!await IsDeviceSwitchAvailableAsync(ct))
         {

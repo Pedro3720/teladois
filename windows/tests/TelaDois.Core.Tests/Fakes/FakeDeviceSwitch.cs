@@ -16,12 +16,19 @@ internal sealed class FakeDeviceSwitch : IDeviceSwitch
 
     public Action<bool>? OnRun { get; set; }
 
+    /// <summary>Se definido, o disparo de desativar só termina (e só chama <see cref="OnRun"/>) quando esta tarefa completa.</summary>
+    public Task? HoldDisable { get; set; }
+
     public Task<bool> IsAvailableAsync(CancellationToken ct) => Task.FromResult(Available);
 
-    public Task<bool> RunAsync(bool enable, CancellationToken ct)
+    public async Task<bool> RunAsync(bool enable, CancellationToken ct)
     {
         Runs.Enqueue(enable);
+        if (!enable && HoldDisable is { } hold)
+        {
+            await hold;
+        }
         OnRun?.Invoke(enable);
-        return Task.FromResult(Accepts);
+        return Accepts;
     }
 }
