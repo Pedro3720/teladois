@@ -189,6 +189,18 @@ public class BenchStatsTests
     }
 
     [Fact]
+    public void WithoutIdleReferenceTheStillColumnsStayEmpty()
+    {
+        var line = BenchStats.ToCsv(new BenchResult("base", "parado", 1, 2, 3, 60, 0, 0, 1, 1, 1, 10, 0)
+        {
+            Still = new StillSplit(0, 0, 0, 0, 0, 0) { HasIdleReference = false },
+        });
+
+        Assert.Equal("", Column(line, "idle_samples"));
+        Assert.Equal("", Column(line, "active_samples"));
+    }
+
+    [Fact]
     public void SummarizeUsesTheSameMedianAndP95AsTheRound()
     {
         Assert.Equal((2.5, 4.0, 4.0), BenchStats.Summarize([4, 1, 3, 2]));

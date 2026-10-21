@@ -98,6 +98,8 @@ public static class BenchStats
     /// <summary>Uma linha do CSV, com ponto decimal (cultura invariante). Variante e cenário não levam vírgula.</summary>
     public static string ToCsv(BenchResult r)
     {
+        // Sem referência ociosa, as colunas do parado ficam vazias (nada foi classificado).
+        var still = r.Still is { HasIdleReference: true } ? r.Still : null;
         var c = CultureInfo.InvariantCulture;
         return string.Join(',',
             r.Variant,
@@ -114,11 +116,11 @@ public static class BenchStats
             r.Measured.ToString(c),
             r.Missing.ToString(c),
             r.Suspect ? "1" : "0",
-            r.Still?.Idle.ToString(c) ?? "",
-            r.Still?.IdleMedianMs.ToString("0.0", c) ?? "",
-            r.Still?.IdleP95Ms.ToString("0.0", c) ?? "",
-            r.Still?.Active.ToString(c) ?? "",
-            r.Still?.ActiveMedianMs.ToString("0.0", c) ?? "",
-            r.Still?.ActiveP95Ms.ToString("0.0", c) ?? "");
+            still?.Idle.ToString(c) ?? "",
+            still?.IdleMedianMs.ToString("0.0", c) ?? "",
+            still?.IdleP95Ms.ToString("0.0", c) ?? "",
+            still?.Active.ToString(c) ?? "",
+            still?.ActiveMedianMs.ToString("0.0", c) ?? "",
+            still?.ActiveP95Ms.ToString("0.0", c) ?? "");
     }
 }

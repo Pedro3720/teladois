@@ -72,13 +72,20 @@ public class BenchOptionsTests
     public void ReadsEveryOption()
     {
         var options = BenchOptions.Parse(
-            ["--monitor", @"\\.\DISPLAY1", "--variants", "lowpower,base", "--scenarios", "rolagem", "--seconds", "5", "--out", "x"]);
+            ["--monitor", @"\\.\DISPLAY1", "--variants", "lowpower,base", "--scenarios", "rolagem", "--seconds", "5", "--out", "x", "--seed", "123"]);
 
         Assert.Equal(@"\\.\DISPLAY1", options.Monitor);
         Assert.Equal(["lowpower", "base"], options.Variants.Select(v => v.Name));
         Assert.Equal(["rolagem"], options.Scenarios);
         Assert.Equal(TimeSpan.FromSeconds(5), options.Duration);
         Assert.Equal(Path.GetFullPath("x"), options.OutDir);
+        Assert.Equal(123, options.Seed);
+    }
+
+    [Fact]
+    public void WithoutSeedTheBenchChoosesOne()
+    {
+        Assert.Null(BenchOptions.Parse(["--out", "x"]).Seed);
     }
 
     [Fact]
@@ -98,6 +105,8 @@ public class BenchOptionsTests
     [InlineData("--seconds", "601")]
     [InlineData("--monitor", "DISPLAY1")]
     [InlineData("--variants", "")]
+    [InlineData("--seed", "-1")]
+    [InlineData("--seed", "abc")]
     [InlineData("--desconhecida", "1")]
     public void RejectsBadValuesWithAMessageInPortuguese(string flag, string value)
     {

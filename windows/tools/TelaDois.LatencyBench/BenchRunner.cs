@@ -25,7 +25,7 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
     private readonly SystemProcessRunner _runner = new();
 
     public async Task<BenchRun> RunAsync(
-        BenchVariant variant, string scenario, DisplayOutput output, TimeSpan duration, string outDir, CancellationToken ct)
+        BenchVariant variant, string scenario, DisplayOutput output, TimeSpan duration, string outDir, CancellationToken ct, int seed = 0)
     {
         var notes = new List<string>();
         var profile = EncoderProfiles.Candidates.FirstOrDefault(p => p.Id == variant.ProfileId)
@@ -40,7 +40,7 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
         IReadOnlyList<DrawEvent> draws;
         string loops;
         var endWindows = "";
-        using (var screen = BenchScreen.Start(scenario, monitor))
+        using (var screen = BenchScreen.Start(scenario, monitor, seed))
         {
             try
             {
@@ -99,7 +99,7 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
         {
             Suspect = suspect,
             // Parado: separa as trocas vindas de tela ociosa das que tinham alguém mexendo naquele monitor.
-            Still = scenario == BenchScenarios.Still ? StillSamples.Split(measured, matchedCodes, latencies) : null,
+            Still = scenario == BenchScenarios.Still ? StillSamples.Split(measured, matchedCodes, latencies, Stopwatch.Frequency) : null,
         };
 
         Directory.CreateDirectory(outDir);
@@ -107,7 +107,14 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
         var line = BenchStats.ToCsv(result) + Environment.NewLine;
         await File.AppendAllTextAsync(csv, File.Exists(csv) ? line : BenchStats.CsvHeader + Environment.NewLine + line, ct);
 
-        await WriteFramesAsync(Path.Combine(outDir, $"quadros-{variant.Name}-{scenario}.csv"), arrivals, codes, draws, count, skip, ct);
+        var stillSamples = scenario == BenchScenarios.Still
+            ? StillSamples.Classify(measured, matchedCodes, latencies, Stopwatch.Frequency)
+            : [];
+        if (scenario == BenchScenarios.Still)
+        {
+            notes.Add($"{variant.Name}/{scenario}: intervalos de {StillSchedule.Base.TotalSeconds:0} s + 0–{StillSchedule.MaxJitterMs} ms sorteados com a semente {seed} (--seed {seed} repete)");
+        }
+        await WriteFramesAsync(Path.Combine(outDir, $"quadros-{variant.Name}-{scenario}.csv"), arrivals, codes, draws, count, skip, stillSamples, ct);
 
         var pngPath = Path.Combine(outDir, $"{variant.Name}-rolagem.png");
         var windowsHidden = endWindows.Contains("COBERTA", StringComparison.Ordinal) || endWindows.Contains("INVISÍVEL", StringComparison.Ordinal);
@@ -129,17 +136,31 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
         return new BenchRun(result, notes);
     }
 
-    /// <summary>Uma linha por imagem (para investigar picos): instante desde a 1ª, completa, bytes, código lido, atraso.</summary>
+    /// <summary>
+    /// Uma linha por imagem (para investigar picos): instante desde a 1ª, completa, bytes, código lido, atraso; nas trocas
+    /// do parado, também imagens desde a última completa e se veio de tela ociosa (1/0; vazio = sem referência).
+    /// </summary>
     private static async Task WriteFramesAsync(
-        string path, List<Arrival> arrivals, List<int?> codes, IReadOnlyList<DrawEvent> draws, int count, int skip, CancellationToken ct)
+        string path, List<Arrival> arrivals, List<int?> codes, IReadOnlyList<DrawEvent> draws, int count, int skip,
+        IReadOnlyList<StillSample> still, CancellationToken ct)
     {
         var c = System.Globalization.CultureInfo.InvariantCulture;
         var latencies = LatencyMatcher.Match(draws, arrivals.Take(count).ToList(), codes.Take(count).ToList(), Stopwatch.Frequency);
-        var text = new StringBuilder("index,ms,keyframe,bytes,code,latency_ms,warmup\n");
+        var byIndex = still.ToDictionary(sample => sample.Index + skip);
+        var text = new StringBuilder("index,ms,keyframe,bytes,code,latency_ms,warmup,frames_since_keyframe,idle\n");
         for (var i = 0; i < count; i++)
         {
             var ms = (arrivals[i].Ticks - arrivals[0].Ticks) * 1000.0 / Stopwatch.Frequency;
-            text.Append(c, $"{i},{ms:0.0},{(arrivals[i].Keyframe ? 1 : 0)},{arrivals[i].Bytes},{codes[i]},{latencies[i]:0.0},{(i < skip ? 1 : 0)}\n");
+            text.Append(c, $"{i},{ms:0.0},{(arrivals[i].Keyframe ? 1 : 0)},{arrivals[i].Bytes},{codes[i]},{latencies[i]:0.0},{(i < skip ? 1 : 0)},");
+            if (byIndex.TryGetValue(i, out var sample))
+            {
+                text.Append(c, $"{sample.FramesSinceKeyframe},{(sample.Idle is { } idle ? (idle ? "1" : "0") : "")}");
+            }
+            else
+            {
+                text.Append(',');
+            }
+            text.Append('\n');
         }
         await File.WriteAllTextAsync(path, text.ToString(), ct);
     }

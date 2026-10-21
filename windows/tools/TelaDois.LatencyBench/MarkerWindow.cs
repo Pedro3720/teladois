@@ -99,7 +99,8 @@ internal sealed class MarkerWindow(Rectangle bounds) : BenchForm(bounds)
 /// <list type="bullet">
 /// <item><c>rolagem</c>/<c>video</c>: uma volta por composição do DWM — <c>DwmFlush()</c> → anota o desenho anterior
 /// (já composto) → troca o código, anda a cena e pinta.</item>
-/// <item><c>parado</c>: nada é repintado entre as trocas (a tela fica parada de verdade); a cada 2 s pelo
+/// <item><c>parado</c>: nada é repintado entre as trocas (a tela fica parada de verdade); a cada 2 s + 0–500 ms
+/// sorteados (<see cref="StillSchedule"/>, fora de fase com o GOP) pelo
 /// <c>Stopwatch</c>: troca o código, pinta, <c>DwmFlush()</c> e anota.</item>
 /// </list>
 /// O instante anotado é o da composição pelo lado do DWM (<c>qpcCompose − qpcRefreshPeriod</c> de
@@ -109,7 +110,10 @@ internal sealed class MarkerWindow(Rectangle bounds) : BenchForm(bounds)
 /// </summary>
 internal sealed class BenchScreen : IDisposable
 {
-    private static readonly long StillInterval = Stopwatch.Frequency * 2;
+    private static long Ticks(TimeSpan time) => (long)(time.TotalSeconds * Stopwatch.Frequency);
+
+    /// <summary>Diferença composição → volta do <c>DwmFlush</c> fora desta faixa é contada à parte no relatório.</summary>
+    private static readonly long LagLow = 0, LagHigh = Stopwatch.Frequency * 4 / 1000;
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmFlush();
@@ -176,7 +180,14 @@ internal sealed class BenchScreen : IDisposable
         {
             _skippedCompositions++;
         }
-        _composeToReturnTicks += returned - a.Qpc;
+        var lag = returned - a.Qpc;
+        _composeToReturnTicks += lag;
+        _lagMin = Math.Min(_lagMin, lag);
+        _lagMax = Math.Max(_lagMax, lag);
+        if (lag < LagLow || lag > LagHigh)
+        {
+            _lagOutside++;
+        }
         composedAt = a.Qpc;
         return true;
     }
@@ -197,12 +208,17 @@ internal sealed class BenchScreen : IDisposable
     private int _flushFailures;
     private int _skippedCompositions;
     private long _composeToReturnTicks;
+    private long _lagMin = long.MaxValue;
+    private long _lagMax = long.MinValue;
+    private int _lagOutside;
+    private readonly int _seed;
     private long _loopStart;
     private long _loopEnd;
 
-    private BenchScreen(string scenario, Rectangle monitor)
+    private BenchScreen(string scenario, Rectangle monitor, int seed)
     {
         _scenario = scenario;
+        _seed = seed;
         _monitor = monitor;
         _ui = new Thread(RunUi) { IsBackground = true, Name = "bancada-janelas" };
         _ui.SetApartmentState(ApartmentState.STA);
@@ -213,9 +229,9 @@ internal sealed class BenchScreen : IDisposable
     /// Abre as janelas em <paramref name="monitor"/> (pixels físicos do desktop) e começa a trocar o marcador. Se não abrir,
     /// fecha o que já tinha sido criado antes de lançar.
     /// </summary>
-    public static BenchScreen Start(string scenario, Rectangle monitor)
+    public static BenchScreen Start(string scenario, Rectangle monitor, int seed)
     {
-        var screen = new BenchScreen(scenario, monitor);
+        var screen = new BenchScreen(scenario, monitor, seed);
         screen._ui.Start();
         if (!screen._ready.Wait(TimeSpan.FromSeconds(10)))
         {
@@ -264,9 +280,12 @@ internal sealed class BenchScreen : IDisposable
         var drawsPerSecond = seconds > 0 ? _draws.Count / seconds : 0;
         var failures = _flushFailures == 0 ? "" : $", sem composição confirmada pelo DWM {_flushFailures} vez(es)";
         var skipped = _skippedCompositions == 0 ? "" : $", {_skippedCompositions} vez(es) mais de 1 composição no meio";
-        var lag = _draws.Count == 0 ? 0 : _composeToReturnTicks * 1000.0 / Stopwatch.Frequency / _draws.Count;
-        return $"{_draws.Count} desenhos em {seconds:0.0} s = {drawsPerSecond:0.0} voltas/s ({_loops} voltas), " +
-            $"DwmFlush volta {lag:0.0} ms depois da composição em média{failures}{skipped}";
+        static double Ms(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
+        var lag = _draws.Count == 0
+            ? "sem composição medida"
+            : $"DwmFlush volta {Ms(_composeToReturnTicks) / _draws.Count:0.0} ms depois da composição em média " +
+              $"(mín. {Ms(_lagMin):0.0}, máx. {Ms(_lagMax):0.0}; {_lagOutside} fora de 0–4 ms)";
+        return $"{_draws.Count} desenhos em {seconds:0.0} s = {drawsPerSecond:0.0} voltas/s ({_loops} voltas), {lag}{failures}{skipped}";
     }
 
     public void Dispose()
@@ -431,13 +450,15 @@ internal sealed class BenchScreen : IDisposable
     private void AnimateStill()
     {
         var code = 0;
-        var next = Stopwatch.GetTimestamp() + StillInterval;
+        var nextInterval = StillSchedule.Create(_seed);
+        var interval = Ticks(nextInterval());
+        var next = Stopwatch.GetTimestamp() + interval;
         var raised = false;
         while (!_stop)
         {
             var now = Stopwatch.GetTimestamp();
             // Topo reafirmado na metade do intervalo: ~1 s longe da troca anterior e da seguinte.
-            if (!raised && now >= next - StillInterval / 2)
+            if (!raised && now >= next - interval / 2)
             {
                 raised = true;
                 if (!RaiseWindows())
@@ -464,7 +485,8 @@ internal sealed class BenchScreen : IDisposable
             {
                 _draws.Add(new DrawEvent(code, composedAt));
             }
-            next += StillInterval;
+            interval = Ticks(nextInterval());
+            next += interval;
             raised = false;
         }
     }

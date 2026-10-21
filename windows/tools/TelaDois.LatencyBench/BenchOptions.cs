@@ -25,8 +25,11 @@ public sealed record BenchOptions(
     TimeSpan Duration,
     string OutDir)
 {
+    /// <summary>Semente do sorteio dos intervalos do parado (<c>--seed</c>); null = a bancada sorteia uma e a escreve no relatório.</summary>
+    public int? Seed { get; init; }
+
     public const string Usage =
-        "uso: TelaDois.LatencyBench [--monitor \\\\.\\DISPLAYn] [--variants base,lowpower,…] [--scenarios parado,rolagem,video] [--seconds 15] [--out builds/bancada]";
+        "uso: TelaDois.LatencyBench [--monitor \\\\.\\DISPLAYn] [--variants base,lowpower,…] [--scenarios parado,rolagem,video] [--seconds 15] [--out builds/bancada] [--seed n]";
 
     /// <summary>
     /// Lê os argumentos; <see cref="ArgumentException"/> com a explicação em português se algum não servir. Sem
@@ -40,6 +43,7 @@ public sealed record BenchOptions(
         IReadOnlyList<BenchVariant> variants = BenchVariants.All;
         IReadOnlyList<string> scenarios = BenchScenarios.All;
         var seconds = 15;
+        int? seed = null;
         string? outDir = null;
 
         for (var i = 0; i < args.Count; i++)
@@ -77,6 +81,13 @@ public sealed record BenchOptions(
                         throw new ArgumentException($"--seconds espera um número inteiro de 1 a 600, não \"{value}\"");
                     }
                     break;
+                case "--seed":
+                    if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedSeed))
+                    {
+                        throw new ArgumentException($"--seed espera um número inteiro não negativo, não \"{value}\"");
+                    }
+                    seed = parsedSeed;
+                    break;
                 case "--out":
                     outDir = value;
                     break;
@@ -93,7 +104,7 @@ public sealed record BenchOptions(
                 "passe --out <pasta> (fora de pastas versionadas pelo Git)");
             outDir = Path.Combine(root, "builds", "bancada");
         }
-        return new BenchOptions(monitor, variants, scenarios, TimeSpan.FromSeconds(seconds), Path.GetFullPath(outDir));
+        return new BenchOptions(monitor, variants, scenarios, TimeSpan.FromSeconds(seconds), Path.GetFullPath(outDir)) { Seed = seed };
     }
 
     /// <summary>A primeira pasta, subindo a partir de <paramref name="start"/>, que tem <c>.git</c> (pasta ou arquivo de worktree).</summary>

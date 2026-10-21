@@ -34,6 +34,8 @@ internal static class Program
             Console.Error.WriteLine(BenchOptions.Usage);
             return 2;
         }
+        // Sem --seed, sorteia uma e a escreve no relatório: a rodada pode ser repetida com os mesmos intervalos.
+        options = options with { Seed = options.Seed ?? Random.Shared.Next() };
 
         var ffmpeg = FfmpegLocator.Find();
         if (ffmpeg is null)
@@ -167,7 +169,7 @@ internal static class Program
         Console.WriteLine($"medindo {Describe(output)}: {options.Variants.Count} variante(s) × {options.Scenarios.Count} cenário(s), {options.Duration.TotalSeconds:0} s cada");
         if (options.Scenarios.Contains(BenchScenarios.Still) && options.Duration < TimeSpan.FromSeconds(60))
         {
-            Console.WriteLine("  aviso: o cenário parado dá 1 amostra a cada 2 s; para números firmes use --seconds 60");
+            Console.WriteLine("  aviso: o cenário parado dá 1 amostra a cada 2–2,5 s; para números firmes use --seconds 60");
         }
         var runner = new BenchRunner(ffmpeg, line => Console.WriteLine($"  {line}"));
         foreach (var variant in options.Variants)
@@ -179,7 +181,7 @@ internal static class Program
                 BenchRun run;
                 try
                 {
-                    run = await runner.RunAsync(variant, scenario, output, options.Duration, options.OutDir, ct);
+                    run = await runner.RunAsync(variant, scenario, output, options.Duration, options.OutDir, ct, options.Seed ?? 0);
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
@@ -196,7 +198,9 @@ internal static class Program
                     Console.WriteLine($"  mediana {Ms(r.MedianMs)}, p95 {Ms(r.P95Ms)}, {r.Fps.ToString("0.0", Pt)} imagens/s, medidas {r.Measured}, faltas {r.Missing}");
                     if (r.Still is { } s)
                     {
-                        Console.WriteLine($"  ociosas {s.Idle} (mediana {Ms(s.IdleMedianMs)}, p95 {Ms(s.IdleP95Ms)}), com atividade {s.Active} (mediana {Ms(s.ActiveMedianMs)})");
+                        Console.WriteLine(s.HasIdleReference
+                            ? $"  ociosas {s.Idle} (mediana {Ms(s.IdleMedianMs)}, p95 {Ms(s.IdleP95Ms)}), com atividade {s.Active} (mediana {Ms(s.ActiveMedianMs)})"
+                            : "  sem referência ociosa: nenhuma imagem repetida pequena na rodada");
                     }
                 }
             }
@@ -238,12 +242,24 @@ internal static class Program
         if (still.Count > 0)
         {
             text.AppendLine();
-            text.AppendLine($"Parado — trocas vindas de tela ociosa (as {StillSamples.Lookback} imagens antes no tamanho mínimo) × com atividade naquele monitor:");
+            text.AppendLine($"Parado — trocas a cada {StillSchedule.Base.TotalSeconds:0} s + 0–{StillSchedule.MaxJitterMs} ms (semente {options.Seed}); " +
+                $"ociosa = tela parada por ≥ {StillSamples.IdleWindow.TotalSeconds:0} s antes da troca, × com atividade naquele monitor:");
             foreach (var r in still)
             {
                 var s = r.Still!;
+                if (!s.HasIdleReference)
+                {
+                    text.AppendLine($"  {r.Variant}: sem referência ociosa (nenhuma imagem repetida ≤ {StillSamples.MaxIdleFrameBytes} B na rodada) · " +
+                        $"geral mediana {Ms(r.MedianMs)}, p95 {Ms(r.P95Ms)}");
+                    continue;
+                }
                 text.AppendLine($"  {r.Variant}: ociosas {s.Idle} (mediana {Ms(s.IdleMedianMs)}, p95 {Ms(s.IdleP95Ms)}) · " +
                     $"com atividade {s.Active} (mediana {Ms(s.ActiveMedianMs)}, p95 {Ms(s.ActiveP95Ms)}) · geral mediana {Ms(r.MedianMs)}, p95 {Ms(r.P95Ms)}");
+                if (s.Phases.Count > 0)
+                {
+                    text.AppendLine("    ociosas por imagens desde a última completa: " +
+                        string.Join(" · ", s.Phases.Select(p => $"{p.Label}: {p.Count} (mediana {Ms(p.MedianMs)})")));
+                }
             }
             if (options.Monitor is not null)
             {
