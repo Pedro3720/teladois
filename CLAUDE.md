@@ -114,6 +114,7 @@ O projeto tem um grafo de conhecimento em `graphify-out/` (código pela AST + sp
 | Vídeo sempre com largura e altura **pares** (corte de 1 linha) | A altura do iPhone 15/16 (1179) é ímpar; `libx264` e `h264_mf` recusam (medido em 2026-10-20) |
 | Etapa 5c: monitor **desativado** quando não usado, por **tarefas agendadas** `\TelaDois\` (SYSTEM, liberadas ao grupo Usuários) | Decisão do usuário em 2026-10-20: só desativar o dispositivo tira o "3" de Configurações; precisa de administrador, então o instalador cria as tarefas uma vez (recusados: serviço sempre rodando; trocar para o Parsec VDD) |
 | Tela preta no iPhone por **Win+Shift+[** + mensagem `SCREEN` (tipo 10, nos dois sentidos) | Decisão do usuário em 2026-10-20: apagar só o iPhone com o monitor funcionando; 1 toque acende (o iPhone avisa o PC) |
+| Ligar/desligar o dispositivo do monitor virtual **um de cada vez** (`SemaphoreSlim` no `VirtualDisplay`); a bandeja só abre o túnel depois do desligar de abrir | Revisão da 5c em 2026-10-21: o descarte de um feed (FFmpeg, `Detach`, `schtasks`, espera de 5 s) pode passar do `RetireLimit`; sem a fila, o ligar seguinte achava o monitor ainda listado, não disparava a tarefa e o desligar atrasado tirava o monitor do feed novo |
 | Medidores `STATS` (tipo 9) + linha `vídeo/s` no registro, antes de mexer no atraso | 2026-10-20: mostraram que cabo e iPhone não são o gargalo (fila/escrita 1 ms, RTT 3 ms); **Wi-Fi descartado** (mais atraso e oscilação) |
 
 ## Estado atual (atualizado em 2026-10-20)
@@ -129,10 +130,11 @@ O projeto tem um grafo de conhecimento em `graphify-out/` (código pela AST + sp
 **Em andamento — Etapa 5c** (mesmo branch `etapa-5b-monitor-virtual`): spec `docs/superpowers/specs/2026-10-20-etapa-5c-monitor-some-e-tela-preta-design.md`, plano `docs/superpowers/plans/2026-10-20-etapa-5c-monitor-some-e-tela-preta.md` (9 tarefas), executando com subagentes.
 - (A) O 3º monitor some do Windows quando desligado: o dispositivo `Root\MttVDD` fica **desativado** e o TelaDois o ativa só enquanto estende, pelas tarefas agendadas `\TelaDois\Ligar monitor virtual` / `\TelaDois\Desligar monitor virtual` (criadas pelo instalador, rodam como SYSTEM, liberadas para o grupo Usuários). Medido no PC do trabalho: ligar ~0,9 s até o monitor aparecer, desligar ~0,7 s; depois de ativar o Windows não põe o monitor no desktop sozinho.
 - (B) Tela preta no iPhone: Win+Shift+[ (e item "Tela preta no iPhone" na bandeja) manda `SCREEN` (tipo 10) e o iPhone fica preto com brilho mínimo, monitor continuando no Windows; 1 toque acende e avisa o PC.
-- **Feito:** Task 1 (instalador com as tarefas; o usuário já rodou no PC do trabalho, ok), Task 2 (`IDeviceSwitch`/`ScheduledTaskSwitch`, `VirtualDisplay.PowerOnAsync/PowerOffAsync`), Task 5 (`SCREEN` nos dois protocolos, bytes `0A0000000101`/`0A0000000100`). Último commit revisado: `68134eb`.
-- **Task 3 implementada** (`084f426`: a fábrica liga o dispositivo antes de estender e desliga depois; teste local de Attach liga o dispositivo antes) — **falta a revisão dela** (e rodar o teste local com `TELADOIS_LOCAL_DRIVER_TEST=1`).
-- **Faltam:** Task 4 (bandeja desativa ao abrir/sair + balão sem tarefas); Task 6 (iPhone: capa preta, toque, print `08-tela-preta`, versão 0.5.0); Task 7 (`MonitorMode` com tela preta + `SCREEN` na `LinkSession`); Task 8 (atalho Win+Shift+[ e item da bandeja); revisão final do branch; Task 9 (teste no iPhone + docs + perguntar sobre o `main`).
-- O controle das tarefas dos subagentes fica em `.superpowers/sdd/progress.md` (só neste PC); o resumo é este bloco.
+- **Tasks 1–8 feitas e revisadas (2026-10-21), revisão final do branch feita e corrigida.** Último commit: `f8aaf2b` (`windows-test` verde; `ios-test`/`ios-build` verdes no `a63bed0`, a última mudança em `ios/`). 289 testes no PC, 0 avisos.
+  - Tasks 1, 2, 5 no PC do trabalho; 3, 4, 6, 7, 8 no PC de casa com subagentes: 3 = a fábrica liga o dispositivo antes de estender e desliga depois, também quando ligar falha ou é cancelado (`084f426`, `f364646`); 4 = a bandeja desliga o dispositivo ao abrir e ao sair, o túnel só começa depois do desligar de abrir, balão único quando faltam as tarefas (`8ee38d8`, `58b7309`); 6 = iPhone 0.5.0 com capa preta, toque acende e manda `SCREEN(0)`, print `08-tela-preta` revisado (`5e2ef3f` vermelho, `a63bed0` verde); 7 = estado da tela preta no `MonitorMode` (`IScreenSwitch`, `ToggleDark`) e `SCREEN` na `LinkSession`, nunca antes do `CONFIG` nem depois do `VIDEO_END` (`8c3615f`); 8 = atalho Win+Shift+[ e item "Tela preta no iPhone (Win+Shift+[)" (`e782527`).
+  - Revisão final (Opus): 4 correções feitas e revisadas de novo — ligar/desligar o dispositivo um de cada vez (`SemaphoreSlim` no `VirtualDisplay`, `c5a6d26`), cancelar entre ligar e estender desativa (`588056f`), sinais do `MonitorMode` antes dos eventos (`a5ac493`), `schtasks.exe` pelo caminho completo (`f8aaf2b`).
+- **Falta só a Task 9** (o usuário adiou em 2026-10-21): (1) teste local com o driver real (`$env:TELADOIS_LOCAL_DRIVER_TEST=1; dotnet test windows/TelaDois.sln --filter "FullyQualifiedName~VirtualDisplayLocalTests"`), anotando os tempos de ligar/desligar — **nunca rodou** (nem nas Tasks 2/3); (2) publicar `builds/windows-5c`, baixar o `.ipa` do `ios-build` do `a63bed0` (0.5.0), inspecionar e instalar pelo xtool (vai pedir para revogar o certificado do PC do trabalho); (3) roteiro com o usuário: modo desligado = só os monitores físicos em Configurações → Tela; ligar (cabo/atalho) = monitor aparece e vídeo chega (tempo no registro); Win+Shift+[ apaga o iPhone e 1 toque acende (marcação da bandeja some); Win+Shift+] desliga e o "3" some; reiniciar o Windows com o modo desligado e o "3" não volta; "Sair" desativa e não sobra `ffmpeg.exe`; mais (da revisão final) Win+Shift+] duas vezes rápido durante a abertura, tela preta e depois desligar o modo; (4) docs (`INSTALACAO.md`, spec §8, este bloco), `graphify update .`, CI verde no SHA final e **perguntar** sobre o `main`. Neste PC (casa) também é o teste da 5a/5b no AMD (`amf-download`).
+- O controle das tarefas dos subagentes fica em `.superpowers/sdd/progress.md` (no PC de casa; tem os achados menores de cada tarefa); o resumo é este bloco.
 
 **Depois da 5c — Etapa 5d (atraso, fluidez e sincronia som/imagem)**, decisão do usuário: experimentos medidos e especificação própria. Queixas no iPhone (2026-10-20): atraso ao começar a mexer o mouse parado, rolagem ainda engasga um pouco, **podcast com o som saindo antes da boca** no iPhone. Hipóteses a medir: latência do `ddagrab` + QSV (`-low_power`, `async_depth`), quedas de fps da captura (20–49/s às vezes), exibição no iPhone (`AVSampleBufferDisplayLayer`). Opções para a sincronia: baixar o atraso abaixo de ~80 ms, ou mandar o som do PC para o iPhone tocar junto com a imagem. Wi-Fi descartado (mais atraso e oscilação; o cabo tem folga).
 
@@ -141,6 +143,7 @@ O projeto tem um grafo de conhecimento em `graphify-out/` (código pela AST + sp
 - Clima: tentar de novo em ~1 min após falha, tempo-limite na primeira localização e checar permissão antes.
 - O teste "relógio ocupa > 50% da altura" mede a caixa do texto, não os dígitos; revisão de prints é a garantia real.
 - Teste da 5a/5b no PC de casa (AMD): entra no teste final (Task 9 da 5c); lá o perfil esperado é `amf-download` (agora cortando a altura para par).
+- Para a revisão de segurança/robustez da Etapa 6 (achados menores da revisão final da 5c): a pasta `\TelaDois` do Agendador é criada sem SDDL própria (`tools/vdd/instalar-vdd.ps1`, `CreateFolder`), herdando a da raiz; janela rara em que o `Detach`/desligar atrasado do feed antigo (> `RetireLimit` de 5 s) tira o monitor do feed novo; `DarkChanged` não é chamado se um assinante de `StateChanged` lançar; cada desligar roda até 3 `schtasks`.
 
 **Bloqueio**
 - Nenhum.
@@ -164,7 +167,7 @@ Levantado dos arquivos de configuração em 2026-10-16 (`~/.claude/settings.json
 - No PC do trabalho o `uv` que o PATH acha primeiro é o de `~\.local\bin` (0.11.32) e funciona com `uv tool run`; se travar com "capacity overflow", veja as armadilhas abaixo.
 
 ### O que está em cada PC
-PC de casa conferido em 2026-10-19 (`Get-Command`, `dotnet --version`, `uv --version`, `claude plugin list`, `claude mcp list`, `~/.claude/skills`, `wsl -l -v`, `xtool --version`, `Get-PnpDevice -Class Display`); PC do trabalho pelo levantamento dele no mesmo dia.
+PC de casa conferido em 2026-10-19 e de novo em 2026-10-21 (`Get-Command`, `dotnet --version`, `uv --version`, `claude plugin list`, `claude mcp list`, `~/.claude/skills`, `wsl -l -v`, `xtool --version`, `Get-PnpDevice -Class Display`); PC do trabalho pelo levantamento dele no mesmo dia.
 
 | Item | Casa (`D:\Downloads\Teladois`, AMD) | Trabalho (`C:\Pedro\Arquivos Pedro\Aplicativo celular`, Intel) |
 |---|---|---|
@@ -175,11 +178,11 @@ PC de casa conferido em 2026-10-19 (`Get-Command`, `dotnet --version`, `uv --ver
 | FFmpeg 9.0.2 (Gyan) | ✅ | ✅ |
 | WSL Ubuntu + xtool 1.22.2 logado + `USBMUXD_SOCKET_ADDRESS` | ✅ | ✅ |
 | iTunes/iCloud web + Apple Mobile Device Support 20 | ✅ | ✅ |
-| **Virtual Display Driver 25.7.23** + tarefas `\TelaDois\` (Etapas 5b/5c) | ❌ rodar `toolsdd\instalar-vdd.ps1` como administrador | ✅ instalado e com as tarefas (2026-10-20; o Controle de Aplicativos não bloqueou) |
+| **Virtual Display Driver 25.7.23** + tarefas `\TelaDois\` (Etapas 5b/5c) | ✅ instalado e com as tarefas; dispositivo desativado (código 22) como o instalador deixa (conferido em 2026-10-21) | ✅ instalado e com as tarefas (2026-10-20; o Controle de Aplicativos não bloqueou) |
 | Plugins `agent-skills`, `frontend-design` | ✅ | ✅ |
 | Plugins `hyperframes`, `supabase` | ❌ (opcionais, não usados aqui) | ✅ |
 | Skill pessoal `graphify` | ✅ | ✅ |
-| Skill pessoal `reverse-engineer-anything` + MCP `rea` | ❌ (útil para inspecionar o `MttVDD.dll`; opcional) | ✅ |
+| Skill pessoal `reverse-engineer-anything` + MCP `rea` | ✅ (novo em 2026-10-21; MCP `rea` = `npx -y rea-agents@6.7.0 mcp`, que deu tempo-limite no `claude mcp list` da conferência) | ✅ |
 | MCP `apify` | ❌ (não usado aqui) | ✅ |
 
 ### Programas no Windows
