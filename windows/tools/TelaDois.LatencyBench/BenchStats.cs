@@ -19,12 +19,15 @@ public sealed record BenchResult(
 {
     /// <summary>Rodada suspeita: o número de imagens descomprimidas não bateu com o de chegadas (casou pelo menor).</summary>
     public bool Suspect { get; init; }
+
+    /// <summary>Só no cenário parado: as amostras separadas em "ociosa" e "com atividade" (<see cref="StillSamples"/>).</summary>
+    public StillSplit? Still { get; init; }
 }
 
 public static class BenchStats
 {
     public static string CsvHeader =>
-        "variant,scenario,median_ms,p95_ms,max_ms,fps,gaps_over_33ms,gaps_over_50ms,avg_keyframe_kb,max_keyframe_kb,mbps,measured,missing,suspect";
+        "variant,scenario,median_ms,p95_ms,max_ms,fps,gaps_over_33ms,gaps_over_50ms,avg_keyframe_kb,max_keyframe_kb,mbps,measured,missing,suspect,idle_samples,idle_median_ms,idle_p95_ms,active_samples,active_median_ms,active_p95_ms";
 
     /// <summary>
     /// Estatística de uma rodada. Atrasos: mediana (média dos dois do meio se par), p95 = elemento de índice
@@ -38,17 +41,9 @@ public static class BenchStats
         IReadOnlyList<double?> latencies,
         long ticksPerSecond)
     {
-        var sorted = latencies.Where(l => l.HasValue).Select(l => l!.Value).Order().ToArray();
-        var missing = latencies.Count - sorted.Length;
-
-        double median = 0, p95 = 0, max = 0;
-        if (sorted.Length > 0)
-        {
-            var n = sorted.Length;
-            median = n % 2 == 1 ? sorted[n / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0;
-            p95 = sorted[(int)Math.Ceiling(0.95 * n) - 1];
-            max = sorted[n - 1];
-        }
+        var values = latencies.Where(l => l.HasValue).Select(l => l!.Value).ToArray();
+        var missing = latencies.Count - values.Length;
+        var (median, p95, max) = Summarize(values);
 
         double fps = 0, mbps = 0;
         int over33 = 0, over50 = 0;
@@ -84,7 +79,20 @@ public static class BenchStats
         var avgKey = keyframes.Length > 0 ? keyframes.Average() : 0;
         var maxKey = keyframes.Length > 0 ? keyframes.Max() : 0;
 
-        return new BenchResult(variant, scenario, median, p95, max, fps, over33, over50, avgKey, maxKey, mbps, sorted.Length, missing);
+        return new BenchResult(variant, scenario, median, p95, max, fps, over33, over50, avgKey, maxKey, mbps, values.Length, missing);
+    }
+
+    /// <summary>Mediana (média dos dois do meio se par), p95 (índice <c>ceil(0,95 n) − 1</c> da lista ordenada) e máximo; zeros sem valores.</summary>
+    public static (double Median, double P95, double Max) Summarize(IEnumerable<double> values)
+    {
+        var sorted = values.Order().ToArray();
+        var n = sorted.Length;
+        if (n == 0)
+        {
+            return (0, 0, 0);
+        }
+        var median = n % 2 == 1 ? sorted[n / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0;
+        return (median, sorted[(int)Math.Ceiling(0.95 * n) - 1], sorted[n - 1]);
     }
 
     /// <summary>Uma linha do CSV, com ponto decimal (cultura invariante). Variante e cenário não levam vírgula.</summary>
@@ -105,6 +113,12 @@ public static class BenchStats
             r.Mbps.ToString("0.00", c),
             r.Measured.ToString(c),
             r.Missing.ToString(c),
-            r.Suspect ? "1" : "0");
+            r.Suspect ? "1" : "0",
+            r.Still?.Idle.ToString(c) ?? "",
+            r.Still?.IdleMedianMs.ToString("0.0", c) ?? "",
+            r.Still?.IdleP95Ms.ToString("0.0", c) ?? "",
+            r.Still?.Active.ToString(c) ?? "",
+            r.Still?.ActiveMedianMs.ToString("0.0", c) ?? "",
+            r.Still?.ActiveP95Ms.ToString("0.0", c) ?? "");
     }
 }

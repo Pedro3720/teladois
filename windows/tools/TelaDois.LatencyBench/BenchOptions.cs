@@ -31,7 +31,8 @@ public sealed record BenchOptions(
     /// <summary>
     /// Lê os argumentos; <see cref="ArgumentException"/> com a explicação em português se algum não servir. Sem
     /// <c>--out</c>, a pasta é <c>builds/bancada</c> na raiz do repositório achada a partir de <paramref name="baseDirectory"/>
-    /// (padrão: a pasta do executável), para nunca cair numa pasta que o Git versiona; sem repositório, no diretório atual.
+    /// (padrão: a pasta do executável), para nunca cair numa pasta que o Git versiona; sem repositório e sem
+    /// <c>--out</c>, recusa (em vez de gravar no diretório atual).
     /// </summary>
     public static BenchOptions Parse(IReadOnlyList<string> args, string? baseDirectory = null)
     {
@@ -39,8 +40,7 @@ public sealed record BenchOptions(
         IReadOnlyList<BenchVariant> variants = BenchVariants.All;
         IReadOnlyList<string> scenarios = BenchScenarios.All;
         var seconds = 15;
-        var root = FindRepoRoot(baseDirectory ?? AppContext.BaseDirectory);
-        var outDir = root is null ? Path.Combine("builds", "bancada") : Path.Combine(root, "builds", "bancada");
+        string? outDir = null;
 
         for (var i = 0; i < args.Count; i++)
         {
@@ -85,6 +85,14 @@ public sealed record BenchOptions(
             }
         }
 
+        if (outDir is null)
+        {
+            var start = baseDirectory ?? AppContext.BaseDirectory;
+            var root = FindRepoRoot(start) ?? throw new ArgumentException(
+                $"sem --out a bancada grava em builds/bancada na raiz do repositório, mas não achou o .git subindo de {start}: " +
+                "passe --out <pasta> (fora de pastas versionadas pelo Git)");
+            outDir = Path.Combine(root, "builds", "bancada");
+        }
         return new BenchOptions(monitor, variants, scenarios, TimeSpan.FromSeconds(seconds), Path.GetFullPath(outDir));
     }
 

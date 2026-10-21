@@ -4,71 +4,68 @@ namespace TelaDois.LatencyBench.Tests;
 
 public class BenchOptionsTests
 {
+    // Pasta temporária com um .git falso: os testes nunca dependem do repositório de verdade.
+    private sealed class TempRepo : IDisposable
+    {
+        public TempRepo(bool withGit = true)
+        {
+            Root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "bancada-" + Guid.NewGuid().ToString("N"))).FullName;
+            if (withGit)
+            {
+                Directory.CreateDirectory(Path.Combine(Root, ".git"));
+            }
+            Deep = Directory.CreateDirectory(Path.Combine(Root, "windows", "bin", "Release")).FullName;
+        }
+
+        public string Root { get; }
+
+        public string Deep { get; }
+
+        public void Dispose() => Directory.Delete(Root, recursive: true);
+    }
+
     [Fact]
     public void DefaultsMeasureEverythingOnTheVirtualMonitor()
     {
-        var options = BenchOptions.Parse([]);
+        using var repo = new TempRepo();
+
+        var options = BenchOptions.Parse([], repo.Deep);
 
         Assert.Null(options.Monitor);
         Assert.Equal(BenchVariants.All.Select(v => v.Name), options.Variants.Select(v => v.Name));
         Assert.Equal(["parado", "rolagem", "video"], options.Scenarios);
         Assert.Equal(TimeSpan.FromSeconds(15), options.Duration);
         // a pasta padrão fica na raiz do repositório (onde está o .git), não no diretório atual
-        var root = BenchOptions.FindRepoRoot(AppContext.BaseDirectory)!;
-        Assert.True(Directory.Exists(Path.Combine(root, ".git")) || File.Exists(Path.Combine(root, ".git")));
-        Assert.Equal(Path.Combine(root, "builds", "bancada"), options.OutDir);
-    }
-
-    [Fact]
-    public void DefaultOutDirClimbsToTheFolderWithGit()
-    {
-        var temp = Path.Combine(Path.GetTempPath(), "bancada-" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            var deep = Directory.CreateDirectory(Path.Combine(temp, "repo", "windows", "bin", "Release")).FullName;
-            Directory.CreateDirectory(Path.Combine(temp, "repo", ".git"));
-
-            var options = BenchOptions.Parse([], deep);
-
-            Assert.Equal(Path.Combine(temp, "repo", "builds", "bancada"), options.OutDir);
-        }
-        finally
-        {
-            Directory.Delete(temp, recursive: true);
-        }
+        Assert.Equal(Path.Combine(repo.Root, "builds", "bancada"), options.OutDir);
     }
 
     [Fact]
     public void GitAsAFileAlsoMarksTheRoot()
     {
         // worktree: .git é um arquivo
-        var temp = Path.Combine(Path.GetTempPath(), "bancada-" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            var deep = Directory.CreateDirectory(Path.Combine(temp, "wt", "a")).FullName;
-            File.WriteAllText(Path.Combine(temp, "wt", ".git"), "gitdir: x");
+        using var repo = new TempRepo(withGit: false);
+        File.WriteAllText(Path.Combine(repo.Root, ".git"), "gitdir: x");
 
-            Assert.Equal(Path.Combine(temp, "wt"), BenchOptions.FindRepoRoot(deep));
-        }
-        finally
-        {
-            Directory.Delete(temp, recursive: true);
-        }
+        Assert.Equal(repo.Root, BenchOptions.FindRepoRoot(repo.Deep));
     }
 
     [Fact]
-    public void WithoutGitTheDefaultIsUnderTheCurrentDirectory()
+    public void WithoutARepositoryTheDefaultFolderIsRefused()
     {
-        var temp = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "bancada-" + Guid.NewGuid().ToString("N"))).FullName;
-        try
-        {
-            Assert.Null(BenchOptions.FindRepoRoot(temp));
-            Assert.Equal(Path.GetFullPath(Path.Combine("builds", "bancada")), BenchOptions.Parse([], temp).OutDir);
-        }
-        finally
-        {
-            Directory.Delete(temp, recursive: true);
-        }
+        using var outside = new TempRepo(withGit: false);
+
+        Assert.Null(BenchOptions.FindRepoRoot(outside.Deep));
+        var error = Assert.Throws<ArgumentException>(() => BenchOptions.Parse([], outside.Deep));
+        Assert.Contains("--out", error.Message);
+    }
+
+    [Fact]
+    public void WithoutARepositoryAnExplicitOutIsFine()
+    {
+        using var outside = new TempRepo(withGit: false);
+        var target = Path.Combine(outside.Root, "medidas");
+
+        Assert.Equal(target, BenchOptions.Parse(["--out", target], outside.Deep).OutDir);
     }
 
     [Fact]
@@ -87,7 +84,7 @@ public class BenchOptionsTests
     [Fact]
     public void ListsIgnoreSpacesAndCase()
     {
-        var options = BenchOptions.Parse(["--variants", " Base , gop4 ", "--scenarios", "VIDEO, parado"]);
+        var options = BenchOptions.Parse(["--variants", " Base , gop4 ", "--scenarios", "VIDEO, parado", "--out", "x"]);
 
         Assert.Equal(["base", "gop4"], options.Variants.Select(v => v.Name));
         Assert.Equal(["video", "parado"], options.Scenarios);

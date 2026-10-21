@@ -128,6 +128,10 @@ public class BenchStatsTests
         Assert.Equal(0, r.GapsOver33);
     }
 
+    // Valor de uma coluna do CSV pelo nome do cabeçalho.
+    private static string Column(string line, string name) =>
+        line.Split(',')[Array.IndexOf(BenchStats.CsvHeader.Split(','), name)];
+
     [Fact]
     public void CsvUsesInvariantCultureAndMatchesTheHeader()
     {
@@ -141,13 +145,12 @@ public class BenchStatsTests
 
             Assert.Contains("12.5", line);
             Assert.DoesNotContain("12,5", line);
-            var fields = line.Split(',');
-            Assert.Equal(BenchStats.CsvHeader.Split(',').Length, fields.Length);
-            Assert.Equal("base", fields[0]);
-            Assert.Equal("rolagem", fields[1]);
-            Assert.Equal("90", fields[^3]);
-            Assert.Equal("3", fields[^2]);
-            Assert.Equal("0", fields[^1]);
+            Assert.Equal(BenchStats.CsvHeader.Split(',').Length, line.Split(',').Length);
+            Assert.Equal("base", Column(line, "variant"));
+            Assert.Equal("rolagem", Column(line, "scenario"));
+            Assert.Equal("90", Column(line, "measured"));
+            Assert.Equal("3", Column(line, "missing"));
+            Assert.Equal("0", Column(line, "suspect"));
         }
         finally
         {
@@ -156,12 +159,39 @@ public class BenchStatsTests
     }
 
     [Fact]
-    public void SuspectRoundIsTheLastCsvColumn()
+    public void SuspectRoundIsMarkedInTheCsv()
     {
         var r = new BenchResult("base", "rolagem", 1, 2, 3, 60, 0, 0, 1, 1, 1, 10, 0) { Suspect = true };
 
-        Assert.EndsWith(",suspect", BenchStats.CsvHeader);
-        Assert.EndsWith(",1", BenchStats.ToCsv(r));
+        Assert.Equal("1", Column(BenchStats.ToCsv(r), "suspect"));
         Assert.False(new BenchResult("base", "rolagem", 1, 2, 3, 60, 0, 0, 1, 1, 1, 10, 0).Suspect);
+    }
+
+    [Fact]
+    public void StillSplitHasItsOwnColumnsEmptyOutsideTheStillScenario()
+    {
+        var plain = BenchStats.ToCsv(new BenchResult("base", "rolagem", 1, 2, 3, 60, 0, 0, 1, 1, 1, 10, 0));
+        var still = BenchStats.ToCsv(new BenchResult("base", "parado", 1, 2, 3, 60, 0, 0, 1, 1, 1, 10, 0)
+        {
+            Still = new StillSplit(4, 6, 305.5, 312, 30.26, 54),
+        });
+
+        foreach (var name in new[] { "idle_samples", "idle_median_ms", "idle_p95_ms", "active_samples", "active_median_ms", "active_p95_ms" })
+        {
+            Assert.Equal("", Column(plain, name));
+        }
+        Assert.Equal("4", Column(still, "idle_samples"));
+        Assert.Equal("305.5", Column(still, "idle_median_ms"));
+        Assert.Equal("312.0", Column(still, "idle_p95_ms"));
+        Assert.Equal("6", Column(still, "active_samples"));
+        Assert.Equal("30.3", Column(still, "active_median_ms"));
+        Assert.Equal("54.0", Column(still, "active_p95_ms"));
+    }
+
+    [Fact]
+    public void SummarizeUsesTheSameMedianAndP95AsTheRound()
+    {
+        Assert.Equal((2.5, 4.0, 4.0), BenchStats.Summarize([4, 1, 3, 2]));
+        Assert.Equal((0.0, 0.0, 0.0), BenchStats.Summarize([]));
     }
 }

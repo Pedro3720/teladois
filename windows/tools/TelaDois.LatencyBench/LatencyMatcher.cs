@@ -55,23 +55,29 @@ public static class LatencyMatcher
     public static IReadOnlyList<double?> FirstChangesOnly(IReadOnlyList<int?> decodedCodes, IReadOnlyList<double?> latencies)
     {
         var count = Math.Min(decodedCodes.Count, latencies.Count);
-        var kept = new List<double?>();
+        return FirstChangeIndices(decodedCodes, count).Select(i => latencies[i]).ToList();
+    }
+
+    /// <summary>Os índices que <see cref="FirstChangesOnly"/> mantém, olhando só as <paramref name="count"/> primeiras imagens.</summary>
+    public static IReadOnlyList<int> FirstChangeIndices(IReadOnlyList<int?> decodedCodes, int count)
+    {
+        var kept = new List<int>();
         int? last = null;
         var previousUnreadable = false;
-        for (var i = 0; i < count; i++)
+        for (var i = 0; i < Math.Min(count, decodedCodes.Count); i++)
         {
             if (decodedCodes[i] is not { } code)
             {
                 if (last is not null)
                 {
-                    kept.Add(null);
+                    kept.Add(i);
                 }
                 previousUnreadable = true;
                 continue;
             }
             if (last is not null && code != last && !previousUnreadable)
             {
-                kept.Add(latencies[i]);
+                kept.Add(i);
             }
             last = code;
             previousUnreadable = false;
