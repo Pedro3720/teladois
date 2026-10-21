@@ -141,6 +141,22 @@ public class VideoFeedFactoryTests
         Assert.Equal(new[] { "PowerOn", "PowerOff" }, monitor.Calls);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CancellationWhileCheckingTheTasksAfterPowerOnPowersOffOnceAndPropagates(bool powersOn)
+    {
+        // Ligou (ou a tarefa de ligar já rodou) e o cabo sai durante a consulta às tarefas: o dispositivo não fica ativo.
+        using var cts = new CancellationTokenSource();
+        var monitor = new FakeVirtualMonitor { PowersOn = powersOn, DuringCanPowerOff = cts.Cancel };
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [Main, Side], () => null, _ => { }, monitor);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => factory.OpenAsync(Hello, cts.Token));
+
+        Assert.Equal(new[] { "PowerOn", "PowerOff" }, monitor.Calls);
+        Assert.False(monitor.Attached);
+    }
+
     [Fact]
     public async Task PowerOnFailurePowersOffOnceAndReturnsNull()
     {

@@ -64,9 +64,10 @@ public sealed class VideoFeedFactory(
         if (virtualMonitor is not null)
         {
             // Desativado, o driver nem responde ao pipe: primeiro tenta ativar; "sem driver" só quando nada responde.
-            if (await PowerOnCleaningUpAsync(virtualMonitor, ct))
+            var (poweredOn, canPowerOff) = await PowerOnCleaningUpAsync(virtualMonitor, ct);
+            if (poweredOn)
             {
-                if (!await virtualMonitor.CanPowerOffAsync(ct))
+                if (!canPowerOff)
                 {
                     DeviceSwitchMissing?.Invoke();
                 }
@@ -75,7 +76,7 @@ public sealed class VideoFeedFactory(
                     return extended;
                 }
             }
-            else if (await virtualMonitor.CanPowerOffAsync(ct))
+            else if (canPowerOff)
             {
                 // A tarefa que ativa já rodou: o dispositivo pode ativar depois da espera, então desativa para o
                 // Windows não listar o monitor sem uso.
@@ -179,14 +180,16 @@ public sealed class VideoFeedFactory(
     }
 
     /// <summary>
-    /// <see cref="IVirtualMonitor.PowerOnAsync"/>; se lançar (inclusive cancelamento, com o cabo saindo durante a
-    /// espera), a tarefa que ativa pode ter rodado: desativa o dispositivo e relança.
+    /// <see cref="IVirtualMonitor.PowerOnAsync"/> e depois <see cref="IVirtualMonitor.CanPowerOffAsync"/>; se um dos dois
+    /// lançar (inclusive cancelamento, com o cabo saindo durante a espera ou a consulta), a tarefa que ativa pode ter
+    /// rodado: desativa o dispositivo e relança.
     /// </summary>
-    private async Task<bool> PowerOnCleaningUpAsync(IVirtualMonitor monitor, CancellationToken ct)
+    private async Task<(bool PoweredOn, bool CanPowerOff)> PowerOnCleaningUpAsync(IVirtualMonitor monitor, CancellationToken ct)
     {
         try
         {
-            return await monitor.PowerOnAsync(ct);
+            var poweredOn = await monitor.PowerOnAsync(ct);
+            return (poweredOn, await monitor.CanPowerOffAsync(ct));
         }
         catch
         {

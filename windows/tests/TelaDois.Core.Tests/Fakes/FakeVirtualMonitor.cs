@@ -68,7 +68,14 @@ internal sealed class FakeVirtualMonitor : IVirtualMonitor
         return PowerOffError is { } error ? Task.FromException(error) : Task.CompletedTask;
     }
 
-    public Task<bool> CanPowerOffAsync(CancellationToken ct) => Task.FromResult(CanPowerOff);
+    /// <summary>Chamado no começo de cada <see cref="CanPowerOffAsync"/> (ex.: o cabo sai durante a consulta às tarefas).</summary>
+    public Action? DuringCanPowerOff { get; set; }
+
+    public Task<bool> CanPowerOffAsync(CancellationToken ct)
+    {
+        DuringCanPowerOff?.Invoke();
+        return ct.IsCancellationRequested ? Task.FromCanceled<bool>(ct) : Task.FromResult(CanPowerOff);
+    }
 
     public string? Find() => Device;
 
