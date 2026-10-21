@@ -414,9 +414,9 @@
     "semantic_hash": "b1858307de87f9f32b82c0b6de7a1756"
   },
   "CLAUDE.md": {
-    "mtime": 1792582364.3391662,
-    "seen": 1792600635.0332637,
-    "ast_hash": "de3c4783c144817f833f626ce5ca6112",
+    "mtime": 1792618944.2850585,
+    "seen": 1792618999.5367095,
+    "ast_hash": "982b91cd1aa3727078dd1d94f3a84438",
     "semantic_hash": ""
   },
   "README.md": {
@@ -438,9 +438,9 @@
     "semantic_hash": "4bafee2976ada8ad3163df7027015bc5"
   },
   "docs/superpowers/specs/2026-10-16-iphone-segunda-tela-descanso-design.md": {
-    "mtime": 1792582302.718619,
-    "seen": 1792600635.0332742,
-    "ast_hash": "38c9b4fb326a33a4914aa3410f725eef",
+    "mtime": 1792618944.2862456,
+    "seen": 1792618999.5367527,
+    "ast_hash": "bd013a63319a7f3a7ba45dfaf4f73f98",
     "semantic_hash": ""
   },
   "ios/project.yml": {
