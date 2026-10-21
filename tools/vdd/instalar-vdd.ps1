@@ -8,8 +8,9 @@
   C:\VirtualDisplayDriver\vdd_settings.xml e cria o dispositivo Root\MttVDD.
   O pacote 25.7.23 é assinado pela SignPath Foundation: o Windows pode perguntar se confia
   nesse fornecedor antes de instalar.
-  Também cria duas tarefas agendadas sob demanda (\TelaDois\Ligar monitor virtual e \TelaDois\Desligar
-  monitor virtual, como SYSTEM, disparáveis por qualquer usuário) e deixa o dispositivo DESATIVADO ao fim:
+  Também cria duas tarefas agendadas sob demanda (\TelaDois\Ligar monitor virtual, que usa Enable-PnpDevice
+  porque o "pnputil /enable-device" dá erro 1167 com o dispositivo desativado, e \TelaDois\Desligar monitor
+  virtual, que usa "pnputil /disable-device"; como SYSTEM, disparáveis por qualquer usuário) e deixa o dispositivo DESATIVADO ao fim:
   o monitor virtual só aparece no Windows enquanto o TelaDois estiver com o modo monitor ligado.
   Depois disso o TelaDois não precisa de administrador. Se algo falhar depois da instalação do driver,
   basta rodar o instalador de novo.
@@ -148,7 +149,17 @@ try {
     $service.Connect()
     $root = $service.GetFolder('\')
     try { $folder = $root.GetFolder('\TelaDois') } catch { $folder = $root.CreateFolder('TelaDois') }
-    foreach ($pair in @(@('Ligar monitor virtual', '/enable-device'), @('Desligar monitor virtual', '/disable-device'))) {
+    # Ligar usa Enable-PnpDevice: com o dispositivo desativado (CM_PROB_DISABLED), "pnputil /enable-device" falha com 1167
+    # ("o dispositivo não está conectado") depois de reiniciar o Windows. Desligar continua com "pnputil /disable-device".
+    $pnputil = "$env:SystemRoot\System32\pnputil.exe"
+    $powershell = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+    $quotedId = $instanceId.Replace("'", "''")
+    $enableArguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command `"try { Enable-PnpDevice -InstanceId '$quotedId' -Confirm:`$false -ErrorAction Stop } catch { exit 1 }`""
+    $tasks = @(
+        @{ Name = 'Ligar monitor virtual'; Path = $powershell; Arguments = $enableArguments },
+        @{ Name = 'Desligar monitor virtual'; Path = $pnputil; Arguments = "/disable-device `"$instanceId`"" }
+    )
+    foreach ($task in $tasks) {
         $definition = $service.NewTask(0)
         $definition.RegistrationInfo.Description = 'TelaDois: liga/desliga o monitor virtual (Virtual Display Driver).'
         $definition.Settings.ExecutionTimeLimit = 'PT1M'
@@ -159,12 +170,12 @@ try {
         $definition.Principal.LogonType = 5          # TASK_LOGON_SERVICE_ACCOUNT
         $definition.Principal.RunLevel = 1           # TASK_RUNLEVEL_HIGHEST
         $action = $definition.Actions.Create(0)      # TASK_ACTION_EXEC
-        $action.Path = "$env:SystemRoot\System32\pnputil.exe"
-        $action.Arguments = "$($pair[1]) `"$instanceId`""
+        $action.Path = $task.Path
+        $action.Arguments = $task.Arguments
         # SYSTEM e administradores: tudo; Usuários (BU): ler e executar.
         $sddl = 'D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;GRGX;;;BU)'
-        $folder.RegisterTaskDefinition($pair[0], $definition, 6, 'SYSTEM', $null, 5, $sddl) | Out-Null   # 6 = criar ou atualizar
-        Write-Host "Tarefa \TelaDois\$($pair[0]) pronta."
+        $folder.RegisterTaskDefinition($task.Name, $definition, 6, 'SYSTEM', $null, 5, $sddl) | Out-Null   # 6 = criar ou atualizar
+        Write-Host "Tarefa \TelaDois\$($task.Name) pronta."
     }
     pnputil /disable-device "$instanceId" | Write-Host
     if ($LASTEXITCODE -eq 3010) {
