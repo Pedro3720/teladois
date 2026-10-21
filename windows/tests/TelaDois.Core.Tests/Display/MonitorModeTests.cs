@@ -297,4 +297,24 @@ public class MonitorModeTests
         await Task.Delay(50);
         Assert.False(wait.IsCompleted);
     }
+
+    [Fact]
+    public async Task SubscriberThatThrowsDoesNotStopTheWaitsFromWaking()
+    {
+        // Desligar o modo com a tela preta muda as duas coisas: um StateChanged que lança não pode deixar a sessão
+        // sem ver a tela preta acender (nem o vídeo desligar).
+        var mode = new MonitorMode();
+        mode.SessionStarted();
+        mode.ToggleDark();
+        var dark = mode.WaitForDarkChangeAsync(seen: true, CancellationToken.None);
+        var video = mode.WaitForChangeAsync(seen: true, CancellationToken.None);
+        mode.StateChanged += (_, _) => throw new InvalidOperationException("assinante quebrado");
+
+        Assert.Throws<InvalidOperationException>(() => mode.Toggle());
+
+        await dark.WaitAsync(TimeSpan.FromSeconds(1));
+        await video.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.False(mode.WantsDark);
+        Assert.False(mode.WantsVideo);
+    }
 }

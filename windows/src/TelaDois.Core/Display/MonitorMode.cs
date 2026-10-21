@@ -152,14 +152,15 @@ public sealed class MonitorMode : IVideoSwitch, IScreenSwitch
                 _darkChanged = NewSignal();
             }
         }
+        // Os dois sinais antes de qualquer evento: um assinante que lança não pode esconder uma mudança da sessão.
+        signal?.TrySetResult();
+        darkSignal?.TrySetResult();
         if (signal is not null)
         {
-            signal.TrySetResult();
             StateChanged?.Invoke(now.Connected, now.On);
         }
         if (darkSignal is not null)
         {
-            darkSignal.TrySetResult();
             DarkChanged?.Invoke(now.Dark);
         }
         return now;

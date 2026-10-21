@@ -963,6 +963,38 @@ public class LinkSessionTests
     }
 
     [Fact]
+    public async Task TwoQuickToggleDarksNeverLeaveThePhoneDark()
+    {
+        var (pc, phone) = await Loopback.CreatePairAsync();
+        await using var _pc = pc;
+        await using var _phone = phone;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var mode = new MonitorMode();
+        mode.SessionStarted();
+        var feed = new GatedFeed(new VideoConfig(2556, 1179, 60), VideoKind.Extend);
+        feed.Release.SetResult();
+        var run = RunWithScreenAsync(pc, mode, feed, cts.Token);
+
+        await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
+        var reader = new LinkFrameReader(phone);
+        var seen = new List<LinkMessageType>();
+        var screens = new List<string>();
+        await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.Video), seen, cts.Token, screens: screens);
+
+        Assert.Equal(DarkToggleResult.TurnedDark, mode.ToggleDark());
+        Assert.Equal(DarkToggleResult.TurnedLit, mode.ToggleDark());
+
+        // A sessão pode ver as duas mudanças ou nenhuma, mas nunca termina com o iPhone preto nem manda fora de ordem.
+        var after = seen.Count;
+        await AnswerUntilAsync(phone, reader, () => seen.Skip(after).Count(t => t == LinkMessageType.Ping) >= 6, seen, cts.Token, screens: screens);
+        Assert.True(screens.Count == 0 || screens.SequenceEqual(["0A0000000101", "0A0000000100"]), string.Join(", ", screens));
+        Assert.False(run.IsCompleted);
+
+        await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
+        Assert.Equal(LinkEndReason.Bye, await run);
+    }
+
+    [Fact]
     public async Task ToggleDarkBeforeTheFirstFrameSendsScreenRightAfterConfig()
     {
         var (pc, phone) = await Loopback.CreatePairAsync();
