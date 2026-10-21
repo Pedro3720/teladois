@@ -12,12 +12,15 @@ internal sealed class TrayContext : ApplicationContext
     /// <summary>Ao sair, quanto esperar a sessão descartar o vídeo e mandar BYE.</summary>
     private static readonly TimeSpan ExitWait = TimeSpan.FromSeconds(6);
 
+    /// <summary>Ao sair, quanto esperar o dispositivo do driver ser desativado.</summary>
+    private static readonly TimeSpan PowerOffExitWait = TimeSpan.FromSeconds(5);
+
     private readonly NotifyIcon _icon;
     private readonly FileLog _log = FileLog.Default();
     private readonly CancellationTokenSource _cts = new();
     private readonly TraySettings _settings = TraySettings.Load();
     private readonly MonitorMode _monitor = new();
-    private readonly VirtualDisplay _virtualDisplay = new(Win32DisplayApi.ForVirtualMonitor(), new DriverPipe());
+    private readonly VirtualDisplay _virtualDisplay;
     private readonly ToolStripMenuItem _monitorItem;
     private readonly SynchronizationContext _ui;
     private readonly Hotkey _hotkey;
@@ -26,9 +29,12 @@ internal sealed class TrayContext : ApplicationContext
     private TunnelState? _lastState;
     private int _ffmpegWarned;
     private int _driverWarned;
+    private int _switchWarned;
 
     public TrayContext()
     {
+        _virtualDisplay = new VirtualDisplay(Win32DisplayApi.ForVirtualMonitor(), new DriverPipe(),
+            new ScheduledTaskSwitch(new SystemProcessRunner(), _log.Write), _log.Write);
         var menu = new ContextMenuStrip();
         _monitorItem = new ToolStripMenuItem("Modo monitor (Win+Shift+])") { Enabled = false };
         _monitorItem.Click += (_, _) => ToggleMonitor();
@@ -48,6 +54,7 @@ internal sealed class TrayContext : ApplicationContext
         };
         _log.Write("TelaDois iniciado");
         DetachLeftover("ao abrir");
+        PowerOffInBackground();
 
         _ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
         var video = new VideoFeedFactory(FfmpegLocator.Find(), new SystemProcessRunner(), DisplayCatalog.Enumerate, () => _settings.Monitor, _log.Write, _virtualDisplay);
@@ -62,7 +69,16 @@ internal sealed class TrayContext : ApplicationContext
         };
         video.DriverMissing += () =>
         {
-            // Também uma vez por execução: sem o driver, toda abertura do vídeo avisa.
+            video.DeviceSwitchMissing += () =>
+        {
+            // Também uma vez por execução: a fábrica avisa a cada conexão.
+            if (Interlocked.Exchange(ref _switchWarned, 1) == 0)
+            {
+                PostToUi(() => _icon.ShowBalloonTip(10000, "TelaDois",
+                    "Rode o instalador do monitor virtual de novo (como administrador) para o Windows esconder o monitor quando ele não estiver em uso.", ToolTipIcon.Info));
+            }
+        };
+        // Também uma vez por execução: sem o driver, toda abertura do vídeo avisa.
             if (Interlocked.Exchange(ref _driverWarned, 1) == 0)
             {
                 PostToUi(() => _icon.ShowBalloonTip(10000, "TelaDois",
@@ -160,6 +176,54 @@ internal sealed class TrayContext : ApplicationContext
         }
     }
 
+    /// <summary>
+    /// Desativa o dispositivo do driver que ficou ativo (queda anterior ou instalação recém-feita), sem prender a thread da
+    /// bandeja: a tarefa do Windows e a espera pelo monitor sumir levam segundos. Nunca lança; o resultado vai ao registro.
+    /// </summary>
+    private void PowerOffInBackground()
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // O próprio VirtualDisplay registra o resultado (desativou, não desativou, tarefa recusada).
+                await _virtualDisplay.PowerOffAsync(_cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                _log.Write("ao abrir: desativar o monitor virtual foi interrompido (saindo)");
+            }
+            catch (Exception e)
+            {
+                _log.Write($"ao abrir: não deu para desativar o monitor virtual: {e.Message}");
+            }
+        });
+    }
+
+    /// <summary>
+    /// Ao sair, deixa o dispositivo do driver desativado (o Windows esconde o monitor). Limitado a
+    /// <see cref="PowerOffExitWait"/> para não prender o encerramento. Não usa o <c>_cts</c>, já cancelado. Nunca lança.
+    /// </summary>
+    private void PowerOffOnExit()
+    {
+        try
+        {
+            using var limit = new CancellationTokenSource(PowerOffExitWait + TimeSpan.FromSeconds(1));
+            var task = Task.Run(() => _virtualDisplay.PowerOffAsync(limit.Token));
+            if (!task.Wait(PowerOffExitWait))
+            {
+                _log.Write($"ao sair: o monitor virtual não foi desativado em {PowerOffExitWait.TotalSeconds:0} s; o próximo início tenta de novo");
+                limit.Cancel();
+                // Ninguém vai esperar o resultado: observa a falha para não virar exceção não observada.
+                _ = task.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+            }
+        }
+        catch (Exception e)
+        {
+            _log.Write($"ao sair: não deu para desativar o monitor virtual: {(e as AggregateException)?.GetBaseException().Message ?? e.Message}");
+        }
+    }
+
     private void Show(TunnelStatus status)
     {
         var text = TunnelStatusText.For(status);
@@ -240,6 +304,7 @@ internal sealed class TrayContext : ApplicationContext
         {
         }
         DetachLeftover("ao sair");
+        PowerOffOnExit();
         _hotkey.Dispose();
         _icon.Visible = false;
         _icon.Dispose();
