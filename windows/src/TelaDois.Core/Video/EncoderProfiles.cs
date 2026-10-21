@@ -99,7 +99,8 @@ public static class EncoderProfiles
     [
         new("amf-d3d11", "h264_amf", "", ["-usage", "ultralowlatency"]),
         new("amf-download", "h264_amf", Download + ",format=nv12", []),
-        new("qsv-hwmap", "h264_qsv", "hwmap=derive_device=qsv,format=qsv," + QsvEvenCrop, ["-low_power", "0", "-look_ahead", "0", "-async_depth", "1"]),
+        // -preset veryfast: provisório, cortou o p95 de rolagem/vídeo de ~240 ms para 65/53 ms sem perder resolução (docs/medicoes/2026-10-21-bancada-5d.md).
+        new("qsv-hwmap", "h264_qsv", "hwmap=derive_device=qsv,format=qsv," + QsvEvenCrop, ["-low_power", "0", "-look_ahead", "0", "-async_depth", "1", "-preset", "veryfast"]),
         new("qsv-download", "h264_qsv", Download + ",format=nv12", ["-async_depth", "1"]),
         new("nvenc-d3d11", "h264_nvenc", "", ["-preset", "p1", "-tune", "ull"]),
         new("nvenc-download", "h264_nvenc", Download + ",format=nv12", ["-preset", "p1", "-tune", "ull"]),

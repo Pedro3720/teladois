@@ -14,7 +14,11 @@ public sealed record BenchVariant(string Name, string ProfileId, EncodeSettings 
 
 public static class BenchVariants
 {
-    /// <summary>As variantes da bancada, na ordem do relatório. <c>base</c> é a linha de hoje.</summary>
+    /// <summary>
+    /// As variantes da bancada, na ordem do relatório. <c>base</c> é a linha de hoje do app. Desde 2026-10-21 o perfil
+    /// <c>qsv-hwmap</c> já inclui <c>-preset veryfast</c> (provisório), então <c>base</c> e <c>veryfast</c> geram a mesma
+    /// linha; <c>veryfast</c> fica (o override troca o valor no lugar) para as medições antigas continuarem comparáveis.
+    /// </summary>
     public static IReadOnlyList<BenchVariant> All { get; } =
     [
         new("base", "qsv-hwmap", EncodeSettings.Default),

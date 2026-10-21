@@ -18,7 +18,7 @@ public class FfmpegArgumentsTests
         var args = FfmpegArguments.ForMonitor(Qsv, 1, 60);
         Assert.Equal(
             "-nostdin -hide_banner -loglevel warning -f lavfi -i ddagrab=output_idx=1:framerate=60:draw_mouse=1 " +
-            "-vf hwmap=derive_device=qsv,format=qsv,vpp_qsv=cw=trunc(iw/2)*2:ch=trunc(ih/2)*2 -c:v h264_qsv -low_power 0 -look_ahead 0 -async_depth 1 " +
+            "-vf hwmap=derive_device=qsv,format=qsv,vpp_qsv=cw=trunc(iw/2)*2:ch=trunc(ih/2)*2 -c:v h264_qsv -low_power 0 -look_ahead 0 -async_depth 1 -preset veryfast " +
             "-bf 0 -g 120 -b:v 12M -maxrate 20M -bufsize 4M -bsf:v h264_metadata=aud=insert -f h264 pipe:1",
             string.Join(' ', args));
     }
@@ -138,6 +138,13 @@ public class FfmpegArgumentsTests
         Assert.Equal(today, string.Join(' ', FfmpegArguments.ForMonitor(p, 2, 60, new EncodeSettings())));
     }
 
+    /// <summary>Só o qsv-hwmap leva <c>-preset veryfast</c> (provisório, bancada da 5d); os outros perfis não mudam.</summary>
+    [Fact]
+    public void OnlyQsvHwmapCarriesPresetVeryfast() =>
+        Assert.Equal(
+            ["qsv-hwmap"],
+            EncoderProfiles.Candidates.Where(p => p.Options.Contains("-preset") && p.Codec == "h264_qsv").Select(p => p.Id));
+
     [Fact]
     public void ProbeWithDefaultSettingsIsUnchanged()
     {
@@ -174,7 +181,7 @@ public class FfmpegArgumentsTests
     {
         var s = new EncodeSettings { CodecOptionOverrides = new Dictionary<string, string> { ["-low_power"] = "1" } };
         var args = string.Join(' ', FfmpegArguments.ForMonitor(Qsv, 2, 60, s));
-        Assert.Contains("-c:v h264_qsv -low_power 1 -look_ahead 0 -async_depth 1 -bf 0", args);
+        Assert.Contains("-c:v h264_qsv -low_power 1 -look_ahead 0 -async_depth 1 -preset veryfast -bf 0", args);
         Assert.DoesNotContain("-low_power 0", args);
     }
 
@@ -183,11 +190,11 @@ public class FfmpegArgumentsTests
     {
         var s = new EncodeSettings
         {
-            CodecOptionOverrides = new Dictionary<string, string> { ["-preset"] = "veryfast" },
+            CodecOptionOverrides = new Dictionary<string, string> { ["-rdo"] = "1" },
             ExtraCodecOptions = ["-int_ref_type", "vertical"],
         };
         var args = string.Join(' ', FfmpegArguments.ForMonitor(Qsv, 2, 60, s));
-        Assert.Contains("-c:v h264_qsv -low_power 0 -look_ahead 0 -async_depth 1 -preset veryfast -int_ref_type vertical -bf 0", args);
+        Assert.Contains("-c:v h264_qsv -low_power 0 -look_ahead 0 -async_depth 1 -preset veryfast -rdo 1 -int_ref_type vertical -bf 0", args);
     }
 
     [Fact]
@@ -195,7 +202,7 @@ public class FfmpegArgumentsTests
     {
         var s = new EncodeSettings { CodecOptionOverrides = new Dictionary<string, string> { ["-low_power"] = "1" }, ExtraCodecOptions = ["-x", "y"] };
         var args = string.Join(' ', FfmpegArguments.Probe(Qsv, 0, s));
-        Assert.Contains("-low_power 1 -look_ahead 0 -async_depth 1 -x y -frames:v 3", args);
+        Assert.Contains("-low_power 1 -look_ahead 0 -async_depth 1 -preset veryfast -x y -frames:v 3", args);
     }
 
     [Fact]

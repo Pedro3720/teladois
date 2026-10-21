@@ -27,6 +27,16 @@ public class BenchVariantsTests
         Assert.Equal(EncodeSettings.Default, b.Settings);
     }
 
+    /// <summary>Desde 2026-10-21 o perfil qsv-hwmap já leva -preset veryfast: base e veryfast geram a mesma linha.</summary>
+    [Fact]
+    public void BaseAndVeryfastProduceTheSameLineNow()
+    {
+        var profile = EncoderProfiles.Candidates.Single(p => p.Id == "qsv-hwmap");
+        Assert.Equal(
+            FfmpegArguments.ForMonitor(profile, 2, 60, Get("base").Settings),
+            FfmpegArguments.ForMonitor(profile, 2, 60, Get("veryfast").Settings));
+    }
+
     [Fact]
     public void DownloadUsesTheDownloadProfileWithDefaults()
     {
