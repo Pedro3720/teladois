@@ -174,6 +174,30 @@ public class StillSamplesTests
         Assert.All(StillSamples.Classify(arrivals, codes, latencies, Tps), s => Assert.Null(s.Idle));
     }
 
+    [Theory]
+    [InlineData(1366, 768, 200, 32)]   // referência: os valores medidos no DISPLAY1
+    [InlineData(2556, 1178, 574, 92)]  // monitor virtual (160×74 macroblocos)
+    [InlineData(1704, 786, 259, 41)]   // 2/3
+    [InlineData(1920, 886, 326, 52)]
+    public void ThresholdsScaleWithTheNumberOfMacroblocks(int width, int height, int maxIdle, int tolerance)
+    {
+        Assert.Equal(new StillThresholds(maxIdle, tolerance), StillThresholds.For(width, height));
+        Assert.Equal(StillThresholds.For(1366, 768), StillThresholds.Reference);
+    }
+
+    [Fact]
+    public void BiggerPicturesGetABiggerIdleReference()
+    {
+        // 250 B não é imagem repetida a 1366×768, mas é no monitor virtual (2556×1178)
+        var (arrivals, codes, latencies) = Run(i => i is >= 100 and <= 110 ? 6600 : 250);
+
+        Assert.False(StillSamples.Split(arrivals, codes, latencies, Tps).HasIdleReference);
+        var big = StillSamples.Split(arrivals, codes, latencies, Tps, StillThresholds.For(2556, 1178));
+        Assert.True(big.HasIdleReference);
+        Assert.Equal((1, 1), (big.Idle, big.Active));
+        Assert.Equal(574, big.LimitBytes);
+    }
+
     [Fact]
     public void UnreadableChangesAreNotClassified()
     {

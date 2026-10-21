@@ -22,12 +22,23 @@ public sealed record BenchResult(
 
     /// <summary>Só no cenário parado: as amostras separadas em "ociosa" e "com atividade" (<see cref="StillSamples"/>).</summary>
     public StillSplit? Still { get; init; }
+
+    /// <summary>
+    /// "Atraso com leitor ideal": o mesmo casamento, mas com a chegada no instante em que o último byte da imagem foi
+    /// lido do FFmpeg (o <c>AccessUnitReader</c> só a entrega quando chega o AUD da seguinte). Null se não deu para medir.
+    /// </summary>
+    public double? IdealMedianMs { get; init; }
+
+    public double? IdealP95Ms { get; init; }
+
+    /// <summary>Só no parado: a separação ociosa × com atividade com o atraso do leitor ideal.</summary>
+    public StillSplit? IdealStill { get; init; }
 }
 
 public static class BenchStats
 {
     public static string CsvHeader =>
-        "variant,scenario,median_ms,p95_ms,max_ms,fps,gaps_over_33ms,gaps_over_50ms,avg_keyframe_kb,max_keyframe_kb,mbps,measured,missing,suspect,idle_samples,idle_median_ms,idle_p95_ms,active_samples,active_median_ms,active_p95_ms";
+        "variant,scenario,median_ms,p95_ms,max_ms,fps,gaps_over_33ms,gaps_over_50ms,avg_keyframe_kb,max_keyframe_kb,mbps,measured,missing,suspect,idle_samples,idle_median_ms,idle_p95_ms,active_samples,active_median_ms,active_p95_ms,ideal_median_ms,ideal_p95_ms,ideal_idle_median_ms,ideal_idle_p95_ms";
 
     /// <summary>
     /// Estatística de uma rodada. Atrasos: mediana (média dos dois do meio se par), p95 = elemento de índice
@@ -82,6 +93,23 @@ public static class BenchStats
         return new BenchResult(variant, scenario, median, p95, max, fps, over33, over50, avgKey, maxKey, mbps, values.Length, missing);
     }
 
+    /// <summary>
+    /// Por que não dá para acrescentar linhas em <paramref name="csvPath"/>: o arquivo existe com outro cabeçalho (de uma
+    /// versão anterior da bancada). Null se não existe ou se o cabeçalho é o de hoje.
+    /// </summary>
+    public static string? HeaderProblem(string csvPath)
+    {
+        if (!File.Exists(csvPath))
+        {
+            return null;
+        }
+        using var reader = new StreamReader(csvPath);
+        var header = reader.ReadLine()?.Trim();
+        return header == CsvHeader
+            ? null
+            : $"{csvPath} tem colunas de outra versão da bancada: use outra pasta com --out ou apague o arquivo antigo";
+    }
+
     /// <summary>Mediana (média dos dois do meio se par), p95 (índice <c>ceil(0,95 n) − 1</c> da lista ordenada) e máximo; zeros sem valores.</summary>
     public static (double Median, double P95, double Max) Summarize(IEnumerable<double> values)
     {
@@ -100,6 +128,7 @@ public static class BenchStats
     {
         // Sem referência ociosa, as colunas do parado ficam vazias (nada foi classificado).
         var still = r.Still is { HasIdleReference: true } ? r.Still : null;
+        var idealStill = r.IdealStill is { HasIdleReference: true } ? r.IdealStill : null;
         var c = CultureInfo.InvariantCulture;
         return string.Join(',',
             r.Variant,
@@ -121,6 +150,10 @@ public static class BenchStats
             still?.IdleP95Ms.ToString("0.0", c) ?? "",
             still?.Active.ToString(c) ?? "",
             still?.ActiveMedianMs.ToString("0.0", c) ?? "",
-            still?.ActiveP95Ms.ToString("0.0", c) ?? "");
+            still?.ActiveP95Ms.ToString("0.0", c) ?? "",
+            r.IdealMedianMs?.ToString("0.0", c) ?? "",
+            r.IdealP95Ms?.ToString("0.0", c) ?? "",
+            idealStill?.IdleMedianMs.ToString("0.0", c) ?? "",
+            idealStill?.IdleP95Ms.ToString("0.0", c) ?? "");
     }
 }

@@ -28,8 +28,18 @@ public sealed record BenchOptions(
     /// <summary>Semente do sorteio dos intervalos do parado (<c>--seed</c>); null = a bancada sorteia uma e a escreve no relatório.</summary>
     public int? Seed { get; init; }
 
+    /// <summary>Duração padrão do parado (1 amostra a cada 2–2,5 s); os outros cenários usam <see cref="Duration"/>.</summary>
+    public static readonly TimeSpan StillDefault = TimeSpan.FromSeconds(60);
+
+    /// <summary>O usuário passou <c>--seconds</c>: vale para todos os cenários.</summary>
+    public bool DurationGiven { get; init; }
+
+    /// <summary>Quanto medir no cenário: <c>--seconds</c> se dado; senão 60 s no parado e 15 s nos outros.</summary>
+    public TimeSpan DurationFor(string scenario) =>
+        !DurationGiven && scenario == BenchScenarios.Still ? StillDefault : Duration;
+
     public const string Usage =
-        "uso: TelaDois.LatencyBench [--monitor \\\\.\\DISPLAYn] [--variants base,lowpower,…] [--scenarios parado,rolagem,video] [--seconds 15] [--out builds/bancada] [--seed n]";
+        "uso: TelaDois.LatencyBench [--monitor \\\\.\\DISPLAYn] [--variants base,lowpower,…] [--scenarios parado,rolagem,video] [--seconds n (padrão: parado 60, outros 15)] [--out builds/bancada] [--seed n]";
 
     /// <summary>
     /// Lê os argumentos; <see cref="ArgumentException"/> com a explicação em português se algum não servir. Sem
@@ -43,6 +53,7 @@ public sealed record BenchOptions(
         IReadOnlyList<BenchVariant> variants = BenchVariants.All;
         IReadOnlyList<string> scenarios = BenchScenarios.All;
         var seconds = 15;
+        var secondsGiven = false;
         int? seed = null;
         string? outDir = null;
 
@@ -80,6 +91,7 @@ public sealed record BenchOptions(
                     {
                         throw new ArgumentException($"--seconds espera um número inteiro de 1 a 600, não \"{value}\"");
                     }
+                    secondsGiven = true;
                     break;
                 case "--seed":
                     if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedSeed))
@@ -104,7 +116,7 @@ public sealed record BenchOptions(
                 "passe --out <pasta> (fora de pastas versionadas pelo Git)");
             outDir = Path.Combine(root, "builds", "bancada");
         }
-        return new BenchOptions(monitor, variants, scenarios, TimeSpan.FromSeconds(seconds), Path.GetFullPath(outDir)) { Seed = seed };
+        return new BenchOptions(monitor, variants, scenarios, TimeSpan.FromSeconds(seconds), Path.GetFullPath(outDir)) { Seed = seed, DurationGiven = secondsGiven };
     }
 
     /// <summary>A primeira pasta, subindo a partir de <paramref name="start"/>, que tem <c>.git</c> (pasta ou arquivo de worktree).</summary>

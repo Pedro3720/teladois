@@ -40,6 +40,29 @@ public class BenchOptionsTests
     }
 
     [Fact]
+    public void EachScenarioHasItsOwnDefaultDuration()
+    {
+        using var repo = new TempRepo();
+
+        var options = BenchOptions.Parse([], repo.Deep);
+
+        Assert.False(options.DurationGiven);
+        Assert.Equal(TimeSpan.FromSeconds(60), options.DurationFor("parado"));
+        Assert.Equal(TimeSpan.FromSeconds(15), options.DurationFor("rolagem"));
+        Assert.Equal(TimeSpan.FromSeconds(15), options.DurationFor("video"));
+    }
+
+    [Fact]
+    public void ExplicitSecondsApplyToEveryScenario()
+    {
+        var options = BenchOptions.Parse(["--seconds", "5", "--out", "x"]);
+
+        Assert.True(options.DurationGiven);
+        Assert.Equal(TimeSpan.FromSeconds(5), options.DurationFor("parado"));
+        Assert.Equal(TimeSpan.FromSeconds(5), options.DurationFor("rolagem"));
+    }
+
+    [Fact]
     public void GitAsAFileAlsoMarksTheRoot()
     {
         // worktree: .git é um arquivo

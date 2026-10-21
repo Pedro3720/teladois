@@ -201,6 +201,51 @@ public class BenchStatsTests
     }
 
     [Fact]
+    public void IdealReaderLatencyHasItsOwnColumns()
+    {
+        var plain = BenchStats.ToCsv(new BenchResult("base", "rolagem", 1, 2, 3, 60, 0, 0, 1, 1, 1, 10, 0));
+        var line = BenchStats.ToCsv(new BenchResult("base", "parado", 1, 2, 3, 60, 0, 0, 1, 1, 1, 10, 0)
+        {
+            IdealMedianMs = 20.5,
+            IdealP95Ms = 31,
+            IdealStill = new StillSplit(3, 1, 280.26, 290, 10, 10),
+        });
+
+        Assert.Equal("20.5", Column(line, "ideal_median_ms"));
+        Assert.Equal("31.0", Column(line, "ideal_p95_ms"));
+        Assert.Equal("280.3", Column(line, "ideal_idle_median_ms"));
+        Assert.Equal("290.0", Column(line, "ideal_idle_p95_ms"));
+        foreach (var name in new[] { "ideal_median_ms", "ideal_p95_ms", "ideal_idle_median_ms", "ideal_idle_p95_ms" })
+        {
+            Assert.Equal("", Column(plain, name));
+        }
+    }
+
+    [Fact]
+    public void AnOldCsvWithAnotherHeaderIsRefused()
+    {
+        var dir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "bancada-" + Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            var csv = Path.Combine(dir, "resultados.csv");
+            Assert.Null(BenchStats.HeaderProblem(csv)); // não existe: será criado
+
+            File.WriteAllText(csv, BenchStats.CsvHeader + "\nbase,rolagem\n");
+            Assert.Null(BenchStats.HeaderProblem(csv));
+
+            File.WriteAllText(csv, "variant,scenario,median_ms\nbase,rolagem,1\n");
+            var problem = BenchStats.HeaderProblem(csv);
+            Assert.NotNull(problem);
+            Assert.Contains("--out", problem);
+            Assert.Contains(csv, problem);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SummarizeUsesTheSameMedianAndP95AsTheRound()
     {
         Assert.Equal((2.5, 4.0, 4.0), BenchStats.Summarize([4, 1, 3, 2]));

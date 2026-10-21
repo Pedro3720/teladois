@@ -35,6 +35,8 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
 
         // 1–3: janelas, captura e encerramento.
         var arrivals = new List<Arrival>();
+        // Instante em que o último byte de cada imagem foi lido do FFmpeg (o "leitor ideal").
+        var idealTicks = new List<long?>();
         // Os pedaços que o leitor já entregou (sem copiar nem crescer um buffer no meio da captura).
         var h264 = new List<byte[]>();
         IReadOnlyList<DrawEvent> draws;
@@ -47,7 +49,7 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
                 await Task.Delay(WindowsSettle, ct);
                 notes.Add($"{variant.Name}/{scenario}: janelas: {screen.Describe()}");
                 var args = FfmpegArguments.ForMonitor(profile, output.OutputIndex, Fps, variant.Settings);
-                var errors = await CaptureAsync(args, duration, arrivals, h264, ct);
+                var errors = await CaptureAsync(args, duration, arrivals, h264, idealTicks, ct);
                 endWindows = screen.Describe();
                 notes.Add($"{variant.Name}/{scenario}: janelas no fim: {endWindows}");
                 if (arrivals.Count == 0)
@@ -95,11 +97,49 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
         // 5: atrasos (só a imagem onde cada código novo aparece), estatística, CSV e print.
         var latencies = LatencyMatcher.Match(draws, measured.Take(matchedCodes.Count).ToList(), matchedCodes, Stopwatch.Frequency);
         var samples = LatencyMatcher.FirstChangesOnly(matchedCodes, latencies);
+        var thresholds = StillThresholds.For(encodedWidth, encodedHeight);
+
+        // Leitor ideal: a mesma conta com a chegada no último byte de cada imagem (o AccessUnitReader espera o AUD da
+        // seguinte para entregá-la). Mostra quanto essa espera soma ao atraso do app.
+        double? idealMedian = null, idealP95 = null;
+        StillSplit? idealStill = null;
+        var idealOk = idealTicks.Count == arrivals.Count && idealTicks.All(t => t is not null);
+        if (idealOk)
+        {
+            var gains = arrivals.Select((a, i) => (a.Ticks - idealTicks[i]!.Value) * 1000.0 / Stopwatch.Frequency).Skip(skip).ToList();
+            if (gains.Any(g => g < 0))
+            {
+                notes.Add($"{variant.Name}/{scenario}: SUSPEITA — leitor ideal depois da entrega em {gains.Count(g => g < 0)} imagem(ns)");
+            }
+            if (gains.Count > 0)
+            {
+                notes.Add($"{variant.Name}/{scenario}: o leitor do app entrega cada imagem {gains.Average():0.0} ms depois do último byte dela em média " +
+                    $"(mín. {gains.Min():0.0}, máx. {gains.Max():0.0})");
+            }
+            var idealMeasured = measured.Select((a, i) => a with { Ticks = idealTicks[i + skip]!.Value }).ToList();
+            var idealLatencies = LatencyMatcher.Match(draws, idealMeasured.Take(matchedCodes.Count).ToList(), matchedCodes, Stopwatch.Frequency);
+            var idealValues = LatencyMatcher.FirstChangesOnly(matchedCodes, idealLatencies).Where(l => l.HasValue).Select(l => l!.Value).ToList();
+            if (idealValues.Count > 0)
+            {
+                (idealMedian, idealP95, _) = BenchStats.Summarize(idealValues);
+            }
+            idealStill = scenario == BenchScenarios.Still
+                ? StillSamples.Split(measured, matchedCodes, idealLatencies, Stopwatch.Frequency, thresholds)
+                : null;
+        }
+        else
+        {
+            notes.Add($"{variant.Name}/{scenario}: leitor ideal sem medida (não deu para achar o último byte de todas as imagens)");
+        }
+
         var result = BenchStats.Compute(variant.Name, scenario, measured, samples, Stopwatch.Frequency) with
         {
             Suspect = suspect,
             // Parado: separa as trocas vindas de tela ociosa das que tinham alguém mexendo naquele monitor.
-            Still = scenario == BenchScenarios.Still ? StillSamples.Split(measured, matchedCodes, latencies, Stopwatch.Frequency) : null,
+            Still = scenario == BenchScenarios.Still ? StillSamples.Split(measured, matchedCodes, latencies, Stopwatch.Frequency, thresholds) : null,
+            IdealMedianMs = idealMedian,
+            IdealP95Ms = idealP95,
+            IdealStill = idealStill,
         };
 
         Directory.CreateDirectory(outDir);
@@ -108,13 +148,13 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
         await File.AppendAllTextAsync(csv, File.Exists(csv) ? line : BenchStats.CsvHeader + Environment.NewLine + line, ct);
 
         var stillSamples = scenario == BenchScenarios.Still
-            ? StillSamples.Classify(measured, matchedCodes, latencies, Stopwatch.Frequency)
+            ? StillSamples.Classify(measured, matchedCodes, latencies, Stopwatch.Frequency, thresholds)
             : [];
         if (scenario == BenchScenarios.Still)
         {
             notes.Add($"{variant.Name}/{scenario}: intervalos de {StillSchedule.Base.TotalSeconds:0} s + 0–{StillSchedule.MaxJitterMs} ms sorteados com a semente {seed} (--seed {seed} repete)");
         }
-        await WriteFramesAsync(Path.Combine(outDir, $"quadros-{variant.Name}-{scenario}.csv"), arrivals, codes, draws, count, skip, stillSamples, ct);
+        await WriteFramesAsync(Path.Combine(outDir, $"quadros-{variant.Name}-{scenario}.csv"), arrivals, codes, draws, count, skip, stillSamples, idealTicks, ct);
 
         var pngPath = Path.Combine(outDir, $"{variant.Name}-rolagem.png");
         var windowsHidden = endWindows.Contains("COBERTA", StringComparison.Ordinal) || endWindows.Contains("INVISÍVEL", StringComparison.Ordinal);
@@ -142,23 +182,29 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
     /// </summary>
     private static async Task WriteFramesAsync(
         string path, List<Arrival> arrivals, List<int?> codes, IReadOnlyList<DrawEvent> draws, int count, int skip,
-        IReadOnlyList<StillSample> still, CancellationToken ct)
+        IReadOnlyList<StillSample> still, IReadOnlyList<long?> idealTicks, CancellationToken ct)
     {
         var c = System.Globalization.CultureInfo.InvariantCulture;
         var latencies = LatencyMatcher.Match(draws, arrivals.Take(count).ToList(), codes.Take(count).ToList(), Stopwatch.Frequency);
+        var idealArrivals = arrivals.Take(count).Select((a, i) => i < idealTicks.Count && idealTicks[i] is { } t ? a with { Ticks = t } : a).ToList();
+        var idealLatencies = LatencyMatcher.Match(draws, idealArrivals, codes.Take(count).ToList(), Stopwatch.Frequency);
         var byIndex = still.ToDictionary(sample => sample.Index + skip);
-        var text = new StringBuilder("index,ms,keyframe,bytes,code,latency_ms,warmup,frames_since_keyframe,idle\n");
+        var text = new StringBuilder("index,ms,keyframe,bytes,code,latency_ms,warmup,frames_since_keyframe,idle,ideal_latency_ms\n");
         for (var i = 0; i < count; i++)
         {
             var ms = (arrivals[i].Ticks - arrivals[0].Ticks) * 1000.0 / Stopwatch.Frequency;
             text.Append(c, $"{i},{ms:0.0},{(arrivals[i].Keyframe ? 1 : 0)},{arrivals[i].Bytes},{codes[i]},{latencies[i]:0.0},{(i < skip ? 1 : 0)},");
             if (byIndex.TryGetValue(i, out var sample))
             {
-                text.Append(c, $"{sample.FramesSinceKeyframe},{(sample.Idle is { } idle ? (idle ? "1" : "0") : "")}");
+                text.Append(c, $"{sample.FramesSinceKeyframe},{(sample.Idle is { } idle ? (idle ? "1" : "0") : "")},");
             }
             else
             {
-                text.Append(',');
+                text.Append(",,");
+            }
+            if (i < idealTicks.Count && idealTicks[i] is not null)
+            {
+                text.Append(c, $"{idealLatencies[i]:0.0}");
             }
             text.Append('\n');
         }
@@ -170,7 +216,8 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
     /// processo se a primeira imagem não vier em 10 s ou se o fluxo parar depois do prazo. Devolve o fim do stderr.
     /// </summary>
     private async Task<string> CaptureAsync(
-        IReadOnlyList<string> args, TimeSpan duration, List<Arrival> arrivals, List<byte[]> h264, CancellationToken ct)
+        IReadOnlyList<string> args, TimeSpan duration, List<Arrival> arrivals, List<byte[]> h264, List<long?> idealTicks,
+        CancellationToken ct)
     {
         var process = _runner.Start(ffmpegPath, args);
         await using (process)
@@ -179,9 +226,10 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
             long deadline = long.MaxValue;
             using var done = CancellationTokenSource.CreateLinkedTokenSource(ct);
             var watchdog = WatchAsync();
+            var stamped = new TimestampedStream(process.Output, Stopwatch.GetTimestamp);
             try
             {
-                await foreach (var unit in new AccessUnitReader(process.Output).ReadAllAsync(CancellationToken.None))
+                await foreach (var unit in new AccessUnitReader(stamped).ReadAllAsync(CancellationToken.None))
                 {
                     var now = Stopwatch.GetTimestamp();
                     if (now >= Interlocked.Read(ref deadline) || ct.IsCancellationRequested)
@@ -200,6 +248,11 @@ public sealed class BenchRunner(string ffmpegPath, Action<string> log)
             {
                 done.Cancel();
                 await watchdog;
+            }
+            var lastBytes = ReaderTiming.LastByteTicks(stamped.Reads, ReaderTiming.UnitEnds(stamped.RawBytes()));
+            for (var i = 0; i < arrivals.Count; i++)
+            {
+                idealTicks.Add(i < lastBytes.Count ? lastBytes[i] : null);
             }
             var errors = process.RecentErrors.Trim();
             ct.ThrowIfCancellationRequested();

@@ -43,6 +43,12 @@ internal static class Program
             Console.Error.WriteLine("ffmpeg.exe não está no PATH (winget install Gyan.FFmpeg)");
             return 1;
         }
+        // Antes de abrir janelas ou mexer em monitor: não mistura linhas com colunas de outra versão no mesmo CSV.
+        if (BenchStats.HeaderProblem(Path.Combine(options.OutDir, "resultados.csv")) is { } problem)
+        {
+            Console.Error.WriteLine(problem);
+            return 2;
+        }
 
         using var cts = new CancellationTokenSource();
         using var cleanedUp = new ManualResetEventSlim();
@@ -166,8 +172,8 @@ internal static class Program
 
     private static async Task RunAllAsync(DisplayOutput output, BenchOptions options, string ffmpeg, List<BenchRun> runs, CancellationToken ct)
     {
-        Console.WriteLine($"medindo {Describe(output)}: {options.Variants.Count} variante(s) × {options.Scenarios.Count} cenário(s), {options.Duration.TotalSeconds:0} s cada");
-        if (options.Scenarios.Contains(BenchScenarios.Still) && options.Duration < TimeSpan.FromSeconds(60))
+        Console.WriteLine($"medindo {Describe(output)}: {options.Variants.Count} variante(s) × {options.Scenarios.Count} cenário(s), {Durations(options)}");
+        if (options.Scenarios.Contains(BenchScenarios.Still) && options.DurationFor(BenchScenarios.Still) < BenchOptions.StillDefault)
         {
             Console.WriteLine("  aviso: o cenário parado dá 1 amostra a cada 2–2,5 s; para números firmes use --seconds 60");
         }
@@ -181,7 +187,7 @@ internal static class Program
                 BenchRun run;
                 try
                 {
-                    run = await runner.RunAsync(variant, scenario, output, options.Duration, options.OutDir, ct, options.Seed ?? 0);
+                    run = await runner.RunAsync(variant, scenario, output, options.DurationFor(scenario), options.OutDir, ct, options.Seed ?? 0);
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
@@ -196,6 +202,7 @@ internal static class Program
                 if (run.Result is { } r)
                 {
                     Console.WriteLine($"  mediana {Ms(r.MedianMs)}, p95 {Ms(r.P95Ms)}, {r.Fps.ToString("0.0", Pt)} imagens/s, medidas {r.Measured}, faltas {r.Missing}");
+                    Console.WriteLine($"  atraso com leitor ideal: mediana {Ms(r.IdealMedianMs)}, p95 {Ms(r.IdealP95Ms)}");
                     if (r.Still is { } s)
                     {
                         Console.WriteLine(s.HasIdleReference
@@ -217,13 +224,14 @@ internal static class Program
     private static void Report(BenchOptions options, List<BenchRun> runs)
     {
         var text = new StringBuilder();
-        text.AppendLine($"Bancada de latência — {DateTime.Now.ToString("yyyy-MM-dd HH:mm", Pt)} — {options.Duration.TotalSeconds:0} s por rodada");
-        string[] header = ["variante", "cenário", "mediana", "p95", "máx", "fps", ">33", ">50", "IDR KB", "Mbit/s", "medidas", "faltas", "suspeita"];
+        text.AppendLine($"Bancada de latência — {DateTime.Now.ToString("yyyy-MM-dd HH:mm", Pt)} — {Durations(options)}");
+        text.AppendLine("(\"ideal\" = atraso com leitor ideal: a imagem contada no último byte lido do FFmpeg, sem esperar o AUD da seguinte)");
+        string[] header = ["variante", "cenário", "mediana", "p95", "máx", "med. ideal", "p95 ideal", "fps", ">33", ">50", "IDR KB", "Mbit/s", "medidas", "faltas", "suspeita"];
         var rows = new List<string[]> { header };
         foreach (var r in runs.Select(run => run.Result).OfType<BenchResult>())
         {
             rows.Add([
-                r.Variant, r.Scenario, Ms(r.MedianMs), Ms(r.P95Ms), Ms(r.MaxMs), r.Fps.ToString("0.0", Pt),
+                r.Variant, r.Scenario, Ms(r.MedianMs), Ms(r.P95Ms), Ms(r.MaxMs), Ms(r.IdealMedianMs), Ms(r.IdealP95Ms), r.Fps.ToString("0.0", Pt),
                 r.GapsOver33.ToString(Pt), r.GapsOver50.ToString(Pt), r.AvgKeyframeKB.ToString("0", Pt), r.Mbps.ToString("0.0", Pt),
                 r.Measured.ToString(Pt), r.Missing.ToString(Pt), r.Suspect ? "SIM" : "",
             ]);
@@ -249,12 +257,17 @@ internal static class Program
                 var s = r.Still!;
                 if (!s.HasIdleReference)
                 {
-                    text.AppendLine($"  {r.Variant}: sem referência ociosa (nenhuma imagem repetida ≤ {StillSamples.MaxIdleFrameBytes} B na rodada) · " +
+                    text.AppendLine($"  {r.Variant}: sem referência ociosa (nenhuma imagem repetida ≤ {s.LimitBytes} B na rodada) · " +
                         $"geral mediana {Ms(r.MedianMs)}, p95 {Ms(r.P95Ms)}");
                     continue;
                 }
                 text.AppendLine($"  {r.Variant}: ociosas {s.Idle} (mediana {Ms(s.IdleMedianMs)}, p95 {Ms(s.IdleP95Ms)}) · " +
                     $"com atividade {s.Active} (mediana {Ms(s.ActiveMedianMs)}, p95 {Ms(s.ActiveP95Ms)}) · geral mediana {Ms(r.MedianMs)}, p95 {Ms(r.P95Ms)}");
+                if (r.IdealStill is { HasIdleReference: true } ideal)
+                {
+                    text.AppendLine($"    com leitor ideal: ociosas mediana {Ms(ideal.IdleMedianMs)}, p95 {Ms(ideal.IdleP95Ms)} · " +
+                        $"com atividade mediana {Ms(ideal.ActiveMedianMs)}");
+                }
                 if (s.Phases.Count > 0)
                 {
                     text.AppendLine("    ociosas por imagens desde a última completa: " +
@@ -289,6 +302,13 @@ internal static class Program
     }
 
     private static string Ms(double value) => value.ToString("0.0", Pt) + " ms";
+
+    private static string Ms(double? value) => value is { } v ? Ms(v) : "—";
+
+    private static string Durations(BenchOptions options) =>
+        options.DurationGiven || !options.Scenarios.Contains(BenchScenarios.Still)
+            ? $"{options.Duration.TotalSeconds:0} s por rodada"
+            : $"{options.DurationFor(BenchScenarios.Still).TotalSeconds:0} s no parado, {options.Duration.TotalSeconds:0} s nos outros";
 
     private static string Describe(DisplayOutput o) => $"{o.DeviceName} {o.Width}×{o.Height} (saída {o.OutputIndex})";
 }

@@ -9,6 +9,9 @@ public sealed record StillSplit(int Idle, int Active, double IdleMedianMs, doubl
 {
     public bool HasIdleReference { get; init; } = true;
 
+    /// <summary>Teto da referência ociosa usado na rodada (bytes, já escalado pelo tamanho da imagem).</summary>
+    public int LimitBytes { get; init; } = StillSamples.MaxIdleFrameBytes;
+
     /// <summary>As ociosas por fase em relação à imagem completa (<see cref="StillSamples.ByPhase"/>).</summary>
     public IReadOnlyList<PhaseBucket> Phases { get; init; } = [];
 }
@@ -23,6 +26,26 @@ public sealed record StillSample(int Index, double LatencyMs, bool? Idle, int? F
 public sealed record PhaseBucket(string Label, int Count, double MedianMs);
 
 /// <summary>Intervalo entre as trocas do parado: 2 s + 0–500 ms sorteados (semente no relatório, para repetir a rodada).</summary>
+/// <summary>
+/// Limites da classificação do parado para um tamanho de imagem: <see cref="StillSamples.MaxIdleFrameBytes"/> e
+/// <see cref="StillSamples.ToleranceBytes"/> (medidos a 1366×768) escalados pelo número de macroblocos (16×16): uma
+/// imagem repetida tem um custo por macrobloco.
+/// </summary>
+public sealed record StillThresholds(int MaxIdleFrameBytes, int ToleranceBytes)
+{
+    private const int ReferenceMacroblocks = 86 * 48; // 1366×768
+
+    public static StillThresholds Reference { get; } = new(StillSamples.MaxIdleFrameBytes, StillSamples.ToleranceBytes);
+
+    public static StillThresholds For(int width, int height)
+    {
+        var scale = (double)((width + 15) / 16) * ((height + 15) / 16) / ReferenceMacroblocks;
+        return new StillThresholds(
+            (int)Math.Round(StillSamples.MaxIdleFrameBytes * scale),
+            (int)Math.Round(StillSamples.ToleranceBytes * scale));
+    }
+}
+
 public static class StillSchedule
 {
     public static readonly TimeSpan Base = TimeSpan.FromSeconds(2);
@@ -46,13 +69,13 @@ public static class StillSamples
     public static readonly TimeSpan IdleWindow = TimeSpan.FromSeconds(1);
 
     /// <summary>Folga, em bytes, sobre o tamanho mínimo da rodada (uma imagem repetida varia poucos bytes).</summary>
-    public const int ToleranceBytes = 32;
+    public const int ToleranceBytes = 32; // a 1366×768; ver StillThresholds
 
     /// <summary>
     /// Teto da referência ociosa: se a menor imagem da rodada passa disso, ninguém deixou a tela parada (uma imagem
     /// repetida tem ~60 B nestes tamanhos) e não dá para classificar.
     /// </summary>
-    public const int MaxIdleFrameBytes = 200;
+    public const int MaxIdleFrameBytes = 200; // a 1366×768; ver StillThresholds
 
     /// <summary>
     /// Máximo de imagens de "cauda" depois de cada completa que não contam: o <c>h264_qsv</c> refina a qualidade nelas
@@ -66,7 +89,8 @@ public static class StillSamples
     /// <see cref="IdleWindow"/> antes dela têm no máximo <paramref name="minBytes"/> + <see cref="ToleranceBytes"/>, sem
     /// contar as completas nem a cauda de cada uma. Sem <see cref="IdleWindow"/> de história, conta como com atividade.
     /// </summary>
-    public static bool IsIdleBefore(IReadOnlyList<Arrival> arrivals, int index, int minBytes, long ticksPerSecond)
+    public static bool IsIdleBefore(
+        IReadOnlyList<Arrival> arrivals, int index, int minBytes, long ticksPerSecond, StillThresholds? thresholds = null)
     {
         if (index <= 0 || index >= arrivals.Count)
         {
@@ -77,7 +101,7 @@ public static class StillSamples
         {
             return false;
         }
-        var limit = minBytes + ToleranceBytes;
+        var limit = minBytes + (thresholds ?? StillThresholds.Reference).ToleranceBytes;
         var tail = 0;
         for (var j = 0; j < index; j++)
         {
@@ -116,11 +140,12 @@ public static class StillSamples
     /// referência e <see cref="StillSample.Idle"/> fica null. As três listas estão alinhadas por índice (casa pelo menor).
     /// </summary>
     public static IReadOnlyList<StillSample> Classify(
-        IReadOnlyList<Arrival> arrivals, IReadOnlyList<int?> codes, IReadOnlyList<double?> latencies, long ticksPerSecond)
+        IReadOnlyList<Arrival> arrivals, IReadOnlyList<int?> codes, IReadOnlyList<double?> latencies, long ticksPerSecond,
+        StillThresholds? thresholds = null)
     {
+        thresholds ??= StillThresholds.Reference;
         var count = Math.Min(arrivals.Count, Math.Min(codes.Count, latencies.Count));
-        var partial = arrivals.Take(count).Where(a => !a.Keyframe).Select(a => a.Bytes).ToList();
-        int? minBytes = partial.Count > 0 && partial.Min() <= MaxIdleFrameBytes ? partial.Min() : null;
+        var minBytes = IdleReference(arrivals, count, thresholds);
         var samples = new List<StillSample>();
         foreach (var i in LatencyMatcher.FirstChangeIndices(codes, count))
         {
@@ -128,7 +153,7 @@ public static class StillSamples
             {
                 continue;
             }
-            bool? idle = minBytes is { } min ? IsIdleBefore(arrivals, i, min, ticksPerSecond) : null;
+            bool? idle = minBytes is { } min ? IsIdleBefore(arrivals, i, min, ticksPerSecond, thresholds) : null;
             samples.Add(new StillSample(i, latency, idle, FramesSinceKeyframe(arrivals, i)));
         }
         return samples;
@@ -136,23 +161,38 @@ public static class StillSamples
 
     /// <summary>Contagem, mediana e p95 das ociosas e das com atividade (<see cref="Classify"/>).</summary>
     public static StillSplit Split(
-        IReadOnlyList<Arrival> arrivals, IReadOnlyList<int?> codes, IReadOnlyList<double?> latencies, long ticksPerSecond) =>
-        Summarize(Classify(arrivals, codes, latencies, ticksPerSecond),
-            hasReference: arrivals.Take(Math.Min(arrivals.Count, Math.Min(codes.Count, latencies.Count)))
-                .Where(a => !a.Keyframe).Select(a => a.Bytes).DefaultIfEmpty(int.MaxValue).Min() <= MaxIdleFrameBytes);
+        IReadOnlyList<Arrival> arrivals, IReadOnlyList<int?> codes, IReadOnlyList<double?> latencies, long ticksPerSecond,
+        StillThresholds? thresholds = null)
+    {
+        thresholds ??= StillThresholds.Reference;
+        var count = Math.Min(arrivals.Count, Math.Min(codes.Count, latencies.Count));
+        return Summarize(Classify(arrivals, codes, latencies, ticksPerSecond, thresholds),
+            IdleReference(arrivals, count, thresholds) is not null, thresholds.MaxIdleFrameBytes);
+    }
+
+    /// <summary>Menor imagem não completa das <paramref name="count"/> primeiras, se couber no teto; senão null.</summary>
+    private static int? IdleReference(IReadOnlyList<Arrival> arrivals, int count, StillThresholds thresholds)
+    {
+        var partial = arrivals.Take(count).Where(a => !a.Keyframe).Select(a => a.Bytes).ToList();
+        return partial.Count > 0 && partial.Min() <= thresholds.MaxIdleFrameBytes ? partial.Min() : null;
+    }
 
     /// <summary><see cref="StillSplit"/> a partir de amostras já classificadas.</summary>
-    public static StillSplit Summarize(IReadOnlyList<StillSample> samples, bool hasReference)
+    public static StillSplit Summarize(IReadOnlyList<StillSample> samples, bool hasReference, int limitBytes = MaxIdleFrameBytes)
     {
         if (!hasReference)
         {
-            return new StillSplit(0, 0, 0, 0, 0, 0) { HasIdleReference = false };
+            return new StillSplit(0, 0, 0, 0, 0, 0) { HasIdleReference = false, LimitBytes = limitBytes };
         }
         var idle = samples.Where(s => s.Idle == true).Select(s => s.LatencyMs).ToList();
         var active = samples.Where(s => s.Idle == false).Select(s => s.LatencyMs).ToList();
         var (idleMedian, idleP95, _) = BenchStats.Summarize(idle);
         var (activeMedian, activeP95, _) = BenchStats.Summarize(active);
-        return new StillSplit(idle.Count, active.Count, idleMedian, idleP95, activeMedian, activeP95) { Phases = ByPhase(samples) };
+        return new StillSplit(idle.Count, active.Count, idleMedian, idleP95, activeMedian, activeP95)
+        {
+            Phases = ByPhase(samples),
+            LimitBytes = limitBytes,
+        };
     }
 
     /// <summary>
