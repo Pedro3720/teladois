@@ -144,7 +144,7 @@ public sealed record EncodeSettings
 - [ ] **Step 3:** ao ligar, registrar a escala efetiva do monitor virtual (`GetDpiForMonitor` com `MDT_EFFECTIVE_DPI` pelo `HMONITOR` do monitor; 96 = 100%) e, se ≠ 100%, um evento `ScaleNotNative` que a bandeja mostra num balão uma vez ("Para o programa do trabalho funcionar em todas as telas, deixe o monitor do iPhone em 100%: Configurações → Tela → monitor do iPhone → Escala 100%"). Não mudar a escala por conta própria.
 - [ ] **Step 4:** bancada: opção `--monitor-size LxA` (padrão: `VirtualMonitorSize.For(2556,1179)` = 1460×674, igual ao app); o relatório mostra o tamanho usado.
 - [ ] **Step 5:** `dotnet test` verde, 0 avisos; commit `feat: monitor do iPhone em 100% com a resolução ÷ 1,75 (programas antigos e menos atraso)`; push; `windows-test` verde.
-- [ ] **Step 6 (usuário):** rodar `toolsdd\instalar-vdd.ps1` como administrador de novo (modos novos no driver).
+- [ ] **Step 6 (usuário):** rodar `tools\vdd\instalar-vdd.ps1` como administrador de novo (modos novos no driver).
 
 ---
 
