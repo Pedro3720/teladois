@@ -33,13 +33,8 @@ public static class MarkerCode
     /// </summary>
     public static (int X, int Y, int Width, int Height) CropIn(int monitorWidth, int monitorHeight, int encodedWidth, int encodedHeight)
     {
-        var sx = (double)encodedWidth / monitorWidth;
-        var sy = (double)encodedHeight / monitorHeight;
-        var x = (int)Math.Round(Offset * sx);
-        var y = (int)Math.Round(Offset * sy);
-        var w = Math.Min((int)Math.Round(Size * sx), encodedWidth - x);
-        var h = Math.Min((int)Math.Round(Size * sy), encodedHeight - y);
-        return (x, y, w, h);
+        var r = BenchLayout.Scale(BenchLayout.Marker, monitorWidth, monitorHeight, encodedWidth, encodedHeight);
+        return (r.X, r.Y, r.Width, r.Height);
     }
 
     /// <summary>

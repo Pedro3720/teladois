@@ -28,14 +28,19 @@ public sealed record BenchOptions(
     public const string Usage =
         "uso: TelaDois.LatencyBench [--monitor \\\\.\\DISPLAYn] [--variants base,lowpower,…] [--scenarios parado,rolagem,video] [--seconds 15] [--out builds/bancada]";
 
-    /// <summary>Lê os argumentos; <see cref="ArgumentException"/> com a explicação em português se algum não servir.</summary>
-    public static BenchOptions Parse(IReadOnlyList<string> args)
+    /// <summary>
+    /// Lê os argumentos; <see cref="ArgumentException"/> com a explicação em português se algum não servir. Sem
+    /// <c>--out</c>, a pasta é <c>builds/bancada</c> na raiz do repositório achada a partir de <paramref name="baseDirectory"/>
+    /// (padrão: a pasta do executável), para nunca cair numa pasta que o Git versiona; sem repositório, no diretório atual.
+    /// </summary>
+    public static BenchOptions Parse(IReadOnlyList<string> args, string? baseDirectory = null)
     {
         string? monitor = null;
         IReadOnlyList<BenchVariant> variants = BenchVariants.All;
         IReadOnlyList<string> scenarios = BenchScenarios.All;
         var seconds = 15;
-        var outDir = Path.Combine("builds", "bancada");
+        var root = FindRepoRoot(baseDirectory ?? AppContext.BaseDirectory);
+        var outDir = root is null ? Path.Combine("builds", "bancada") : Path.Combine(root, "builds", "bancada");
 
         for (var i = 0; i < args.Count; i++)
         {
@@ -81,6 +86,20 @@ public sealed record BenchOptions(
         }
 
         return new BenchOptions(monitor, variants, scenarios, TimeSpan.FromSeconds(seconds), Path.GetFullPath(outDir));
+    }
+
+    /// <summary>A primeira pasta, subindo a partir de <paramref name="start"/>, que tem <c>.git</c> (pasta ou arquivo de worktree).</summary>
+    public static string? FindRepoRoot(string start)
+    {
+        for (var dir = new DirectoryInfo(Path.GetFullPath(start)); dir is not null; dir = dir.Parent)
+        {
+            var git = Path.Combine(dir.FullName, ".git");
+            if (Directory.Exists(git) || File.Exists(git))
+            {
+                return dir.FullName;
+            }
+        }
+        return null;
     }
 
     private static List<string> List(string value, string flag)

@@ -100,6 +100,16 @@ public class LatencyMatcherTests
     }
 
     [Fact]
+    public void FirstChangesOnlySkipsTheChangeRightAfterAnUnreadableFrame()
+    {
+        // a imagem ilegível pode ter sido a da troca (borrada): a seguinte chegaria 1 imagem atrasada, não é amostra
+        var codes = new int?[] { 1, 2, null, 3, 4 };
+        var latencies = new double?[] { 900, 20, null, 37, 21 };
+
+        Assert.Equal(new double?[] { 20, null, 21 }, LatencyMatcher.FirstChangesOnly(codes, latencies));
+    }
+
+    [Fact]
     public void FirstChangesOnlyUsesTheShorterOfTheTwoLists()
     {
         var codes = new int?[] { 1, 2, 3, 4 };

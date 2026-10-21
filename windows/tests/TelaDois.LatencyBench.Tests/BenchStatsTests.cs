@@ -145,12 +145,23 @@ public class BenchStatsTests
             Assert.Equal(BenchStats.CsvHeader.Split(',').Length, fields.Length);
             Assert.Equal("base", fields[0]);
             Assert.Equal("rolagem", fields[1]);
-            Assert.Equal("90", fields[^2]);
-            Assert.Equal("3", fields[^1]);
+            Assert.Equal("90", fields[^3]);
+            Assert.Equal("3", fields[^2]);
+            Assert.Equal("0", fields[^1]);
         }
         finally
         {
             CultureInfo.CurrentCulture = original;
         }
+    }
+
+    [Fact]
+    public void SuspectRoundIsTheLastCsvColumn()
+    {
+        var r = new BenchResult("base", "rolagem", 1, 2, 3, 60, 0, 0, 1, 1, 1, 10, 0) { Suspect = true };
+
+        Assert.EndsWith(",suspect", BenchStats.CsvHeader);
+        Assert.EndsWith(",1", BenchStats.ToCsv(r));
+        Assert.False(new BenchResult("base", "rolagem", 1, 2, 3, 60, 0, 0, 1, 1, 1, 10, 0).Suspect);
     }
 }

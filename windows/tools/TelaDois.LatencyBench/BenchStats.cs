@@ -15,12 +15,16 @@ public sealed record BenchResult(
     double MaxKeyframeKB,
     double Mbps,
     int Measured,
-    int Missing);
+    int Missing)
+{
+    /// <summary>Rodada suspeita: o número de imagens descomprimidas não bateu com o de chegadas (casou pelo menor).</summary>
+    public bool Suspect { get; init; }
+}
 
 public static class BenchStats
 {
     public static string CsvHeader =>
-        "variant,scenario,median_ms,p95_ms,max_ms,fps,gaps_over_33ms,gaps_over_50ms,avg_keyframe_kb,max_keyframe_kb,mbps,measured,missing";
+        "variant,scenario,median_ms,p95_ms,max_ms,fps,gaps_over_33ms,gaps_over_50ms,avg_keyframe_kb,max_keyframe_kb,mbps,measured,missing,suspect";
 
     /// <summary>
     /// Estatística de uma rodada. Atrasos: mediana (média dos dois do meio se par), p95 = elemento de índice
@@ -100,6 +104,7 @@ public static class BenchStats
             r.MaxKeyframeKB.ToString("0.0", c),
             r.Mbps.ToString("0.00", c),
             r.Measured.ToString(c),
-            r.Missing.ToString(c));
+            r.Missing.ToString(c),
+            r.Suspect ? "1" : "0");
     }
 }

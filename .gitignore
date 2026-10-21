@@ -8,8 +8,8 @@ ios/*.xcworkspace/
 *.ipa
 /Payload/
 /screenshots/
-# Pasta local onde o Claude entrega o .ipa ao usuário
-/builds/
+# Pasta local onde o Claude entrega o .ipa ao usuário (e onde a bancada grava; ignorada em qualquer nível)
+builds/
 
 # .NET
 windows/**/bin/

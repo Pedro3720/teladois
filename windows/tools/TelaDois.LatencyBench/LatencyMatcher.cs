@@ -48,13 +48,16 @@ public static class LatencyMatcher
     /// Só as amostras de atraso que valem: o <c>ddagrab</c> repete a imagem com a tela parada, e uma repetição casaria
     /// com um desenho cada vez mais velho. Fica só a 1ª imagem de cada código novo (diferente do último código lido) e as
     /// imagens ilegíveis (null = falta) depois do 1º código lido; a 1ª imagem lida nunca conta (a troca dela não foi vista).
-    /// As repetições continuam contando para imagens/s e buracos (isso usa as chegadas, não esta lista).
+    /// A troca logo depois de uma imagem ilegível também não conta: a ilegível pode ter sido a da troca (borrada), e a
+    /// seguinte chegaria com 1 imagem a mais de atraso. As repetições continuam contando para imagens/s e buracos (isso
+    /// usa as chegadas, não esta lista).
     /// </summary>
     public static IReadOnlyList<double?> FirstChangesOnly(IReadOnlyList<int?> decodedCodes, IReadOnlyList<double?> latencies)
     {
         var count = Math.Min(decodedCodes.Count, latencies.Count);
         var kept = new List<double?>();
         int? last = null;
+        var previousUnreadable = false;
         for (var i = 0; i < count; i++)
         {
             if (decodedCodes[i] is not { } code)
@@ -63,13 +66,15 @@ public static class LatencyMatcher
                 {
                     kept.Add(null);
                 }
+                previousUnreadable = true;
                 continue;
             }
-            if (last is not null && code != last)
+            if (last is not null && code != last && !previousUnreadable)
             {
                 kept.Add(latencies[i]);
             }
             last = code;
+            previousUnreadable = false;
         }
         return kept;
     }
