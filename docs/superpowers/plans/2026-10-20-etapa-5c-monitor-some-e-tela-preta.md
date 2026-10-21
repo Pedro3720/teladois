@@ -17,7 +17,7 @@
 - PC: `dotnet test windows/TelaDois.sln` local + `windows-test` no CI. Zero avisos (C# `TreatWarningsAsErrors`; Swift `SWIFT_STRICT_CONCURRENCY: complete`).
 - Bytes de referência nos dois testes (Swift e C#), além dos existentes: **`SCREEN(1)` = `0A0000000101`**, **`SCREEN(0)` = `0A0000000100`** (tipo 10, 1 byte de dados).
 - Tarefas agendadas: pasta **`\TelaDois\`**, nomes **`Ligar monitor virtual`** e **`Desligar monitor virtual`**, rodam como `SYSTEM`, ação `pnputil.exe /enable-device "<InstanceId>"` / `/disable-device "<InstanceId>"`, sem gatilho, leitura+execução para o grupo Usuários (`BU`), tempo-limite 1 min, sem instâncias paralelas.
-- Esperas: ligar o dispositivo até o monitor aparecer em `VirtualDisplay.Find()` — **8 s**; desligar até sumir — **5 s**.
+- Esperas: ligar o dispositivo até o monitor aparecer em `VirtualDisplay.Find()` — **20 s**; desligar até sumir — **5 s**.
 - Atalho da tela preta: **Win+Shift+[**, tecla achada pelo caractere `[` no layout atual (ABNT2 ≠ US). O atalho da 5b (Win+Shift+]) continua.
 - Item da bandeja: **`Tela preta no iPhone (Win+Shift+[)`**, com marcação.
 - Print novo do teste de UI: **`08-tela-preta`**. Versão do app iPhone: `MARKETING_VERSION` **0.5.0**.
@@ -122,7 +122,7 @@ Esperado: as duas tarefas listadas; `Status` = `Error`/`Unknown` (desativado). D
   - `public interface IDeviceSwitch { Task<bool> IsAvailableAsync(CancellationToken ct); Task<bool> RunAsync(bool enable, CancellationToken ct); }` — `RunAsync` dispara a tarefa e devolve se o `schtasks` aceitou (não espera o dispositivo); nunca lança (exceto `OperationCanceledException` do chamador).
   - `public sealed class ScheduledTaskSwitch(IProcessRunner runner, Action<string> log) : IDeviceSwitch` com `public const string EnableTask = @"\TelaDois\Ligar monitor virtual"; public const string DisableTask = @"\TelaDois\Desligar monitor virtual";` — `IsAvailableAsync` = `schtasks /query /tn <EnableTask>` e `<DisableTask>` com código 0; `RunAsync` = `schtasks /run /tn <tarefa>` com código 0.
   - `IVirtualMonitor` ganha: `Task<bool> PowerOnAsync(CancellationToken ct)` — true quando o monitor do driver está presente (`Find() != null`) ao fim; `Task PowerOffAsync(CancellationToken ct)` — desliga o dispositivo (só se as tarefas existem); `Task<bool> CanPowerOffAsync(CancellationToken ct)` — as tarefas existem.
-  - `VirtualDisplay(IDisplayApi api, IDriverPipe pipe, IDeviceSwitch? device = null, Action<string>? log = null)` com `TimeSpan PowerOnWait { get; init; } = 8 s`, `TimeSpan PowerOffWait { get; init; } = 5 s`, `TimeSpan PollInterval { get; init; } = 100 ms`.
+  - `VirtualDisplay(IDisplayApi api, IDriverPipe pipe, IDeviceSwitch? device = null, Action<string>? log = null)` com `TimeSpan PowerOnWait { get; init; } = 20 s` (era 8 s; o `Enable-PnpDevice` do PowerShell leva ~3–4 s e a 1ª vez depois do boot pode levar muito mais), `TimeSpan PowerOffWait { get; init; } = 5 s`, `TimeSpan PollInterval { get; init; } = 100 ms`.
   - Regras do `PowerOnAsync`: se `Find() != null` → true na hora (já ativo); senão, se `device` disponível → `RunAsync(true)` e espera `Find() != null` até `PowerOnWait`; senão → false. Registra `monitor virtual ativado em N ms` ou o motivo da falha (pelo `log` do construtor).
   - Regras do `PowerOffAsync`: se `device` indisponível → nada; senão `RunAsync(false)` e espera `Find() == null` até `PowerOffWait`; registra o tempo ou "não desativou em 5 s".
 

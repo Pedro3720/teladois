@@ -28,7 +28,7 @@ Além do que já faz:
 4. Rodar de novo é seguro (idempotente): recria as tarefas com o `InstanceId` atual.
 
 ### 2.3 TelaDois (sem administrador)
-- Peça nova `VirtualDeviceSwitch` (atrás de uma interface testável): `IsAvailable` (as duas tarefas existem), `EnableAsync(ct)`, `DisableAsync(ct)`. Dispara a tarefa pelo Agendador do Windows (`schtasks /run /tn "\TelaDois\…"` ou a API COM) e espera o resultado olhando o próprio sistema: depois de ligar, até o monitor do driver aparecer em `VirtualDisplay.Find()` (limite 8 s); depois de desligar, até ele sumir (limite 5 s). Nunca lança para quem chama; registra tempo e falhas no registro.
+- Peça nova `VirtualDeviceSwitch` (atrás de uma interface testável): `IsAvailable` (as duas tarefas existem), `EnableAsync(ct)`, `DisableAsync(ct)`. Dispara a tarefa pelo Agendador do Windows (`schtasks /run /tn "\TelaDois\…"` ou a API COM) e espera o resultado olhando o próprio sistema: depois de ligar, até o monitor do driver aparecer em `VirtualDisplay.Find()` (limite 20 s); depois de desligar, até ele sumir (limite 5 s). Nunca lança para quem chama; registra tempo e falhas no registro.
 - **Ligar** (o vídeo vai abrir em Estender): `EnableAsync` → `Attach` (gravando no registro, como hoje) → espera da DXGI → captura. Tudo dentro da abertura do vídeo, que já roda fora do laço do PING: o iPhone fica no relógio com "PC conectado" e a conexão não cai.
 - **Desligar** (descarte do `VirtualMonitorFeed`, sair do TelaDois): `Detach` → `DisableAsync`.
 - **Ao abrir o TelaDois:** se o dispositivo estiver ativo (sobra de travamento ou reinício), `DetachLeftover` + `DisableAsync`.
@@ -67,7 +67,7 @@ Além do que já faz:
 
 | Situação | Comportamento |
 |---|---|
-| Tarefa "Ligar" falha ou o monitor não aparece em 8 s | Registra o tempo e o motivo; abre em Duplicar (como sem driver) |
+| Tarefa "Ligar" falha ou o monitor não aparece em 20 s | Registra o tempo e o motivo; abre em Duplicar (como sem driver) |
 | Tarefa "Desligar" falha | Registra; o monitor fica fora do desktop (como na 5b) |
 | Tarefas ausentes | Comportamento da 5b + balão único pedindo para rodar o instalador |
 | Atalho Win+Shift+[ ocupado | Balão + registro; item do menu funciona |

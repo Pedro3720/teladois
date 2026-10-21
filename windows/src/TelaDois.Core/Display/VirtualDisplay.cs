@@ -14,8 +14,12 @@ public sealed class VirtualDisplay(IDisplayApi api, IDriverPipe pipe, IDeviceSwi
 
     public const int Fps = 60;
 
-    /// <summary>Prazo para o monitor aparecer depois de ativar o dispositivo.</summary>
-    public TimeSpan PowerOnWait { get; init; } = TimeSpan.FromSeconds(8);
+    /// <summary>
+    /// Prazo para o monitor aparecer depois de ativar o dispositivo. 20 s porque a tarefa roda o <c>Enable-PnpDevice</c>
+    /// do PowerShell (o <c>pnputil</c> dava erro 1167 depois de reinícios): o dispositivo fica OK em ~3–4 s e o monitor
+    /// aparece no <c>EnumDisplayDevices</c> um pouco depois; a primeira ativação depois do boot pode levar muito mais.
+    /// </summary>
+    public TimeSpan PowerOnWait { get; init; } = TimeSpan.FromSeconds(20);
 
     /// <summary>Prazo para o monitor sumir depois de desativar o dispositivo.</summary>
     public TimeSpan PowerOffWait { get; init; } = TimeSpan.FromSeconds(5);
@@ -65,9 +69,10 @@ public sealed class VirtualDisplay(IDisplayApi api, IDriverPipe pipe, IDeviceSwi
             Log("monitor virtual não ativou: a tarefa do Windows não rodou");
             return false;
         }
+        var taskMs = watch.ElapsedMilliseconds;
         if (await WaitUntilAsync(() => TryFind() is not null, PowerOnWait, ct))
         {
-            Log($"monitor virtual ativado em {watch.ElapsedMilliseconds} ms");
+            Log($"monitor virtual ativado em {watch.ElapsedMilliseconds} ms (tarefa voltou em {taskMs} ms)");
             return true;
         }
         Log($"monitor virtual não apareceu em {Seconds(PowerOnWait)} depois de ativar o dispositivo");

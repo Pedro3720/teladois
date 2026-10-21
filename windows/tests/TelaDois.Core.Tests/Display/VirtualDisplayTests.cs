@@ -224,7 +224,7 @@ public class VirtualDisplayTests
     public void PowerWaitsMatchTheSpec()
     {
         var display = new VirtualDisplay(new FakeDisplayApi(), new NoPipe());
-        Assert.Equal(TimeSpan.FromSeconds(8), display.PowerOnWait);
+        Assert.Equal(TimeSpan.FromSeconds(20), display.PowerOnWait);
         Assert.Equal(TimeSpan.FromSeconds(5), display.PowerOffWait);
         Assert.Equal(TimeSpan.FromMilliseconds(100), display.PollInterval);
     }
