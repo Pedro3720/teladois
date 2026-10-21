@@ -15,9 +15,17 @@ public static class StillSamples
     public const int ToleranceBytes = 32;
 
     /// <summary>
-    /// A troca na imagem <paramref name="index"/> veio de tela ociosa: as <see cref="Lookback"/> imagens antes dela (sem
-    /// contar as completas, que vêm a cada 2 s de qualquer jeito) têm no máximo <paramref name="minBytes"/> +
-    /// <see cref="ToleranceBytes"/>. Sem <see cref="Lookback"/> imagens antes, não dá para saber: conta como com atividade.
+    /// Imagens logo depois de cada completa que também não contam: o <c>h264_qsv</c> refina a qualidade nelas (medido em
+    /// 2026-10-21 com a tela parada: completa, 126 B, 71 B, depois 60 B). Com GOP de 2 s e trocas a cada 2 s, a completa
+    /// cai sempre ~8 imagens antes da troca, e essas duas fariam toda troca parecer "com atividade".
+    /// </summary>
+    public const int FramesAfterKeyframeIgnored = 2;
+
+    /// <summary>
+    /// A troca na imagem <paramref name="index"/> veio de tela ociosa: as <see cref="Lookback"/> imagens antes dela têm no
+    /// máximo <paramref name="minBytes"/> + <see cref="ToleranceBytes"/>, sem contar as completas (vêm a cada 2 s de
+    /// qualquer jeito) nem as <see cref="FramesAfterKeyframeIgnored"/> seguintes a cada uma. Sem <see cref="Lookback"/>
+    /// imagens antes, não dá para saber: conta como com atividade.
     /// </summary>
     public static bool IsIdleBefore(IReadOnlyList<Arrival> arrivals, int index, int minBytes)
     {
@@ -27,12 +35,24 @@ public static class StillSamples
         }
         for (var j = index - Lookback; j < index; j++)
         {
-            if (!arrivals[j].Keyframe && arrivals[j].Bytes > minBytes + ToleranceBytes)
+            if (!NearKeyframe(arrivals, j) && arrivals[j].Bytes > minBytes + ToleranceBytes)
             {
                 return false;
             }
         }
         return true;
+    }
+
+    private static bool NearKeyframe(IReadOnlyList<Arrival> arrivals, int j)
+    {
+        for (var k = Math.Max(0, j - FramesAfterKeyframeIgnored); k <= j; k++)
+        {
+            if (arrivals[k].Keyframe)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>

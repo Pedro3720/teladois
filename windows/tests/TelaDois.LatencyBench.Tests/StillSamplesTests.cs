@@ -35,6 +35,26 @@ public class StillSamplesTests
         Assert.True(StillSamples.IsIdleBefore(arrivals, 28, Idle));
     }
 
+    [Fact]
+    public void TheTwoRefinementFramesAfterAKeyframeDoNotCountAsActivity()
+    {
+        // medido no h264_qsv (2026-10-21): depois da imagem completa vêm 126 B e 71 B antes de voltar aos 60 B
+        var sizes = new Dictionary<int, int> { [19] = 203_000, [20] = 126, [21] = 71 };
+        var arrivals = Frames(30, i => sizes.GetValueOrDefault(i, Idle), i => i == 19);
+
+        Assert.Equal(2, StillSamples.FramesAfterKeyframeIgnored);
+        Assert.True(StillSamples.IsIdleBefore(arrivals, 28, Idle));
+    }
+
+    [Fact]
+    public void ABigFrameThreeAfterTheKeyframeIsActivity()
+    {
+        var sizes = new Dictionary<int, int> { [19] = 203_000, [22] = 126 };
+        var arrivals = Frames(30, i => sizes.GetValueOrDefault(i, Idle), i => i == 19);
+
+        Assert.False(StillSamples.IsIdleBefore(arrivals, 28, Idle));
+    }
+
     [Theory]
     [InlineData(Idle + StillSamples.ToleranceBytes, true)]
     [InlineData(Idle + StillSamples.ToleranceBytes + 1, false)]
