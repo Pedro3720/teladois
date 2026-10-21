@@ -64,7 +64,7 @@ public sealed class VideoFeedFactory(
         if (virtualMonitor is not null)
         {
             // Desativado, o driver nem responde ao pipe: primeiro tenta ativar; "sem driver" só quando nada responde.
-            if (await virtualMonitor.PowerOnAsync(ct))
+            if (await PowerOnCleaningUpAsync(virtualMonitor, ct))
             {
                 if (!await virtualMonitor.CanPowerOffAsync(ct))
                 {
@@ -77,7 +77,10 @@ public sealed class VideoFeedFactory(
             }
             else if (await virtualMonitor.CanPowerOffAsync(ct))
             {
+                // A tarefa que ativa já rodou: o dispositivo pode ativar depois da espera, então desativa para o
+                // Windows não listar o monitor sem uso.
                 log("o monitor virtual não ativou: duplicando um monitor");
+                await PowerOffQuietlyAsync(virtualMonitor);
             }
             else if (await virtualMonitor.IsInstalledAsync(ct))
             {
@@ -138,6 +141,12 @@ public sealed class VideoFeedFactory(
             await PowerOffQuietlyAsync(monitor);
             return null;
         }
+        catch
+        {
+            // Exceção inesperada: desativa o dispositivo e deixa a fábrica registrar/propagar como sempre.
+            await PowerOffQuietlyAsync(monitor);
+            throw;
+        }
         try
         {
             if (mode.Width != hello.Width || mode.Height != hello.Height)
@@ -164,6 +173,23 @@ public sealed class VideoFeedFactory(
         catch
         {
             VirtualMonitorFeed.DetachAndVerify(monitor, device, log);
+            await PowerOffQuietlyAsync(monitor);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// <see cref="IVirtualMonitor.PowerOnAsync"/>; se lançar (inclusive cancelamento, com o cabo saindo durante a
+    /// espera), a tarefa que ativa pode ter rodado: desativa o dispositivo e relança.
+    /// </summary>
+    private async Task<bool> PowerOnCleaningUpAsync(IVirtualMonitor monitor, CancellationToken ct)
+    {
+        try
+        {
+            return await monitor.PowerOnAsync(ct);
+        }
+        catch
+        {
             await PowerOffQuietlyAsync(monitor);
             throw;
         }

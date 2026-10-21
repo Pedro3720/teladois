@@ -48,6 +48,9 @@ internal sealed class FakeVirtualMonitor : IVirtualMonitor
     /// <summary>Resposta do <see cref="CanPowerOffAsync"/> (as tarefas do Windows existem).</summary>
     public bool CanPowerOff { get; set; } = true;
 
+    /// <summary>Se definido, <see cref="PowerOnAsync"/> lança esta exceção depois de anotar a chamada (ex.: o cabo saiu durante a espera).</summary>
+    public Exception? PowerOnError { get; set; }
+
     public int PowerOns => Volatile.Read(ref _powerOns);
     public int PowerOffs => Volatile.Read(ref _powerOffs);
 
@@ -55,7 +58,7 @@ internal sealed class FakeVirtualMonitor : IVirtualMonitor
     {
         Interlocked.Increment(ref _powerOns);
         Calls.Enqueue("PowerOn");
-        return Task.FromResult(PowersOn);
+        return PowerOnError is { } error ? Task.FromException<bool>(error) : Task.FromResult(PowersOn);
     }
 
     public Task PowerOffAsync(CancellationToken ct)

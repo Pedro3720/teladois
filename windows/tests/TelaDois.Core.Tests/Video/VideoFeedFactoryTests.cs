@@ -108,7 +108,63 @@ public class VideoFeedFactoryTests
         Assert.Equal(VideoKind.Mirror, feed!.Kind);
         Assert.Contains("o monitor virtual não ativou: duplicando um monitor", log);
         Assert.Equal(0, warned);
+        // O dispositivo pode ativar depois do tempo de espera: desativa para o monitor não ficar listado.
+        Assert.Equal(new[] { "PowerOn", "PowerOff" }, monitor.Calls);
+    }
+
+    [Fact]
+    public async Task DriverThatRespondsButNeverShowsTheMonitorMirrorsWithoutWarningOrPowerOff()
+    {
+        // Driver instalado, sem tarefas (nada a desativar) e o monitor não aparece.
+        var monitor = new FakeVirtualMonitor { PowersOn = false, CanPowerOff = false, Installed = true };
+        var warned = 0;
+        var log = new ConcurrentQueue<string>();
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [Main, Side], () => null, log.Enqueue, monitor);
+        factory.DriverMissing += () => warned++;
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal(VideoKind.Mirror, feed!.Kind);
+        Assert.Contains("o driver do monitor virtual responde, mas o monitor não aparece no Windows: duplicando um monitor", log);
+        Assert.Equal(0, warned);
         Assert.Equal(new[] { "PowerOn" }, monitor.Calls);
+    }
+
+    [Fact]
+    public async Task CancellationDuringPowerOnPowersOffOnceAndPropagates()
+    {
+        var monitor = new FakeVirtualMonitor { PowerOnError = new OperationCanceledException() };
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [Main, Side], () => null, _ => { }, monitor);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => factory.OpenAsync(Hello, new CancellationToken(true)));
+
+        Assert.Equal(new[] { "PowerOn", "PowerOff" }, monitor.Calls);
+    }
+
+    [Fact]
+    public async Task PowerOnFailurePowersOffOnceAndReturnsNull()
+    {
+        var monitor = new FakeVirtualMonitor { PowerOnError = new IOException("o Agendador de Tarefas não respondeu") };
+        var log = new ConcurrentQueue<string>();
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [Main, Side], () => null, log.Enqueue, monitor);
+
+        Assert.Null(await factory.OpenAsync(Hello, CancellationToken.None));
+
+        Assert.Contains("Segunda Tela indisponível: o Agendador de Tarefas não respondeu", log);
+        Assert.Equal(new[] { "PowerOn", "PowerOff" }, monitor.Calls);
+    }
+
+    [Fact]
+    public async Task UnexpectedAttachFailurePowersOffOnceAndIsStillReported()
+    {
+        var monitor = new FakeVirtualMonitor { AttachError = new ArgumentException("resolução inválida") };
+        var log = new ConcurrentQueue<string>();
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => [Main, Side], () => null, log.Enqueue, monitor);
+
+        Assert.Null(await factory.OpenAsync(Hello, CancellationToken.None));
+
+        Assert.Contains("Segunda Tela indisponível: resolução inválida", log);
+        Assert.Equal(new[] { "PowerOn", "PowerOff" }, monitor.Calls);
     }
 
     [Fact]
