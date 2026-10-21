@@ -28,4 +28,22 @@ public sealed record EncodeSettings
     /// perfil corta). Perfis sem filtro (<c>amf-d3d11</c>, <c>nvenc-d3d11</c>) ignoram este valor.
     /// </summary>
     public (int Width, int Height)? ScaleTo { get; init; }
+
+    /// <summary>Opções da entrada, antes do <c>-f lavfi</c> (ex. ["-fflags","nobuffer"]).</summary>
+    public IReadOnlyList<string> InputOptions { get; init; } = [];
+
+    /// <summary>Opções da saída, logo depois das da compressão (ex. ["-fps_mode","passthrough"]); valem na sondagem também.</summary>
+    public IReadOnlyList<string> OutputOptions { get; init; } = [];
+
+    /// <summary>
+    /// Imagens por segundo pedidas ao ddagrab quando diferentes das da compressão; um <c>fps=</c> logo depois do ddagrab
+    /// devolve a taxa da compressão (o <c>-g</c> segue a taxa da compressão). null = a mesma.
+    /// </summary>
+    public ushort? GrabFps { get; init; }
+
+    /// <summary>
+    /// Captura e filtro do perfil num só <c>-filter_complex</c>, sem o dispositivo de entrada <c>lavfi</c> (sem <c>-i</c>
+    /// nem <c>-vf</c>).
+    /// </summary>
+    public bool FilterComplex { get; init; }
 }

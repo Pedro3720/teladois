@@ -245,6 +245,60 @@ public class FfmpegArgumentsTests
     }
 
     [Fact]
+    public void InputOptionsGoBeforeTheLavfiInput()
+    {
+        var s = new EncodeSettings { InputOptions = ["-fflags", "nobuffer"] };
+        Assert.Contains("-loglevel warning -fflags nobuffer -f lavfi -i ddagrab=", string.Join(' ', FfmpegArguments.ForMonitor(Qsv, 2, 60, s)));
+        Assert.Contains("-loglevel warning -fflags nobuffer -f lavfi -i ddagrab=", string.Join(' ', FfmpegArguments.Probe(Qsv, 2, s)));
+    }
+
+    [Fact]
+    public void OutputOptionsGoAfterTheCodecOptions()
+    {
+        var s = new EncodeSettings { OutputOptions = ["-fps_mode", "passthrough"] };
+        Assert.Contains("-preset veryfast -fps_mode passthrough -bf 0 -g 120", string.Join(' ', FfmpegArguments.ForMonitor(Qsv, 2, 60, s)));
+        Assert.Contains("-preset veryfast -fps_mode passthrough -frames:v 3 -f null -", string.Join(' ', FfmpegArguments.Probe(Qsv, 2, s)));
+    }
+
+    [Fact]
+    public void GrabFpsCapturesFasterAndBringsTheRateBackForTheEncoder()
+    {
+        var s = new EncodeSettings { GrabFps = 120, GrabOptions = ":dup_frames=0" };
+        var args = string.Join(' ', FfmpegArguments.ForMonitor(Qsv, 2, 60, s));
+        Assert.Contains("-i ddagrab=output_idx=2:framerate=120:draw_mouse=1:dup_frames=0,fps=60 -vf hwmap=", args);
+        Assert.Contains(" -g 120 ", args);
+        Assert.Contains("-i ddagrab=output_idx=2:framerate=120:draw_mouse=1:dup_frames=0,fps=60 -vf hwmap=", string.Join(' ', FfmpegArguments.Probe(Qsv, 2, s)));
+    }
+
+    [Fact]
+    public void FilterComplexRunsCaptureAndProfileFilterInOneGraphWithoutLavfiInput()
+    {
+        var s = new EncodeSettings { FilterComplex = true };
+        var args = FfmpegArguments.ForMonitor(Qsv, 2, 60, s);
+        Assert.Equal(
+            "-nostdin -hide_banner -loglevel warning -filter_complex ddagrab=output_idx=2:framerate=60:draw_mouse=1," +
+            "hwmap=derive_device=qsv,format=qsv,vpp_qsv=cw=trunc(iw/2)*2:ch=trunc(ih/2)*2 -c:v h264_qsv -low_power 0 -look_ahead 0 -async_depth 1 -preset veryfast " +
+            "-bf 0 -g 120 -b:v 12M -maxrate 20M -bufsize 4M -bsf:v h264_metadata=aud=insert -f h264 pipe:1",
+            string.Join(' ', args));
+        Assert.Contains("-filter_complex ddagrab=output_idx=2:framerate=60:draw_mouse=1,hwmap=", string.Join(' ', FfmpegArguments.Probe(Qsv, 2, s)));
+    }
+
+    [Theory]
+    [MemberData(nameof(AllProfileIds))]
+    public void FilterComplexOnlyMovesTheInputAndFilter(string id)
+    {
+        var p = EncoderProfiles.Candidates.Single(x => x.Id == id);
+        var args = FfmpegArguments.ForMonitor(p, 2, 60, new EncodeSettings { FilterComplex = true });
+        Assert.DoesNotContain("-i", args);
+        Assert.DoesNotContain("-vf", args);
+        Assert.DoesNotContain("lavfi", args);
+        var graph = p.Filter.Length > 0 ? $"ddagrab=output_idx=2:framerate=60:draw_mouse=1,{p.Filter}" : "ddagrab=output_idx=2:framerate=60:draw_mouse=1";
+        Assert.Equal(graph, args[args.ToList().IndexOf("-filter_complex") + 1]);
+        var today = FfmpegArguments.ForMonitor(p, 2, 60);
+        Assert.Equal(today.SkipWhile(a => a != "-c:v"), args.SkipWhile(a => a != "-c:v"));
+    }
+
+    [Fact]
     public void EncodeWithSettingsKeepsFrameCount()
     {
         var args = string.Join(' ', FfmpegArguments.Encode(Qsv, "testsrc=size=64x64:rate=30", 30, frames: 5, settings: new EncodeSettings { GopSeconds = 1 }));

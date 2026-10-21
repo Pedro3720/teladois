@@ -14,6 +14,7 @@ public class BenchVariantsTests
         [
             "base", "lowpower", "veryfast", "cbr", "intrarefresh", "gop4", "nodup", "download", "scale1920", "scale2of3",
             "veryfast-scale1920", "veryfast-scale2of3", "x264", "mf", "fps30",
+            "passthrough", "vfr", "nobuffer", "graph", "grab120",
         ];
         Assert.Equal(expected, BenchVariants.All.Select(v => v.Name).ToArray());
         Assert.Equal(BenchVariants.All.Count, BenchVariants.All.Select(v => v.Name).Distinct().Count());
@@ -158,5 +159,42 @@ public class BenchVariantsTests
     {
         Assert.Equal(60, BenchVariant.DefaultFps);
         Assert.All(BenchVariants.All.Where(v => v.Name != "fps30"), v => Assert.Equal(BenchVariant.DefaultFps, v.Fps));
+    }
+    /// <summary>Diagnósticos do parado da Task 5: cada um muda uma coisa só em relação à base (perfil, taxa e o resto iguais).</summary>
+    public static TheoryData<string, EncodeSettings> ParadoDiagnostics() => new()
+    {
+        { "passthrough", EncodeSettings.Default with { OutputOptions = ["-fps_mode", "passthrough"] } },
+        { "vfr", EncodeSettings.Default with { OutputOptions = ["-fps_mode", "vfr"] } },
+        { "nobuffer", EncodeSettings.Default with { InputOptions = ["-fflags", "nobuffer"] } },
+        { "graph", EncodeSettings.Default with { FilterComplex = true } },
+        { "grab120", EncodeSettings.Default with { GrabFps = 120 } },
+    };
+
+    [Theory]
+    [MemberData(nameof(ParadoDiagnostics))]
+    public void ParadoDiagnosticsChangeOneThingAgainstBase(string name, EncodeSettings expected)
+    {
+        var v = Get(name);
+        Assert.Equal("qsv-hwmap", v.ProfileId);
+        Assert.Equal(BenchVariant.DefaultFps, v.Fps);
+        Assert.Equal(expected.InputOptions, v.Settings.InputOptions);
+        Assert.Equal(expected.OutputOptions, v.Settings.OutputOptions);
+        Assert.Equal(expected with { InputOptions = v.Settings.InputOptions, OutputOptions = v.Settings.OutputOptions }, v.Settings);
+    }
+
+    [Theory]
+    [InlineData("passthrough", "-preset veryfast -fps_mode passthrough -bf 0 -g 120")]
+    [InlineData("vfr", "-preset veryfast -fps_mode vfr -bf 0 -g 120")]
+    [InlineData("nobuffer", "-loglevel warning -fflags nobuffer -f lavfi -i ddagrab=output_idx=2:framerate=60:draw_mouse=1 -vf hwmap=")]
+    [InlineData("graph", "-loglevel warning -filter_complex ddagrab=output_idx=2:framerate=60:draw_mouse=1,hwmap=derive_device=qsv,format=qsv,vpp_qsv=")]
+    [InlineData("grab120", "-i ddagrab=output_idx=2:framerate=120:draw_mouse=1,fps=60 -vf hwmap=")]
+    public void ParadoDiagnosticsProduceTheExpectedLine(string name, string fragment)
+    {
+        var v = Get(name);
+        var profile = EncoderProfiles.Candidates.Single(p => p.Id == v.ProfileId);
+        var line = string.Join(' ', FfmpegArguments.ForMonitor(profile, 2, v.Fps, v.Settings));
+        Assert.Contains(fragment, line, StringComparison.Ordinal);
+        Assert.Contains(" -g 120 ", line, StringComparison.Ordinal);
+        Assert.EndsWith("-bsf:v h264_metadata=aud=insert -f h264 pipe:1", line, StringComparison.Ordinal);
     }
 }
