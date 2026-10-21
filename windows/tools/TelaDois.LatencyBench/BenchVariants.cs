@@ -15,6 +15,16 @@ public sealed record BenchVariant(string Name, string ProfileId, EncodeSettings 
 public static class BenchVariants
 {
     /// <summary>
+    /// Por que <paramref name="variant"/> não roda numa imagem capturada de <paramref name="width"/>×<paramref name="height"/>,
+    /// ou <c>null</c> se roda. O <see cref="EncodeSettings.ScaleTo"/> é absoluto: se não for menor que a captura nas duas
+    /// dimensões, a variante ampliaria (ou repetiria) a imagem em vez de reduzir, e a medição não diria nada.
+    /// </summary>
+    public static string? SkipReason(BenchVariant variant, int width, int height) =>
+        variant.Settings.ScaleTo is { } to && (to.Width >= width || to.Height >= height)
+            ? $"{variant.Name}: pulada — reduziria para {to.Width}×{to.Height}, que não é menor que a imagem capturada {width}×{height} (ampliaria)"
+            : null;
+
+    /// <summary>
     /// As variantes da bancada, na ordem do relatório. <c>base</c> é a linha de hoje do app. Desde 2026-10-21 o perfil
     /// <c>qsv-hwmap</c> já inclui <c>-preset veryfast</c> (provisório), então <c>base</c> e <c>veryfast</c> geram a mesma
     /// linha; <c>veryfast</c> fica (o override troca o valor no lugar) para as medições antigas continuarem comparáveis.

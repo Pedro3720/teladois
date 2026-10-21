@@ -17,6 +17,9 @@ internal static class Program
     /// <summary>O monitor medido, para o relatório (preenchido quando a medição começa).</summary>
     private static string? s_measured;
 
+    /// <summary>Variantes puladas porque ampliariam a imagem (<see cref="BenchVariants.SkipReason"/>), para o relatório.</summary>
+    private static readonly List<string> s_skipped = [];
+
     private static readonly TimeSpan OutputWait = TimeSpan.FromSeconds(10);
     private static readonly CultureInfo Pt = CultureInfo.GetCultureInfo("pt-BR");
 
@@ -131,19 +134,30 @@ internal static class Program
                 return 1;
             }
             var (width, height) = options.MonitorSize;
+            // Sem o modo exato o Windows ligaria outro tamanho (a proporção mais perto) e a medição não seria a do pedido.
+            if (!display.Modes().Any(m => m.Width == width && m.Height == height))
+            {
+                Fail(runs, $"o driver do monitor virtual não tem {width}×{height}: rode tools\\vdd\\instalar-vdd.ps1 de novo como administrador " +
+                    "(ou escolha outro tamanho com --monitor-size, ex.: 2556x1179)");
+                return 1;
+            }
             (device, var mode) = display.Attach(width, height);
             Log($"{device} ligado em {mode.Width}×{mode.Height}@{mode.Frequency} (pedido {width}×{height})");
-            if (mode.Width != width || mode.Height != height)
-            {
-                Log($"o driver não tem {width}×{height}: rode tools\\vdd\\instalar-vdd.ps1 de novo como administrador");
-            }
             var output = await WaitForOutputAsync(device, ct);
             if (output is null)
             {
                 Fail(runs, $"o monitor virtual {device} não apareceu na DXGI em {OutputWait.TotalSeconds:0} s");
                 return 1;
             }
-            var scale = display.EffectiveDpi(device) is { } dpi ? $"escala {Math.Round(dpi * 100.0 / 96):0}%" : "escala desconhecida";
+            string scale;
+            try
+            {
+                scale = display.EffectiveDpi(device) is { } dpi ? $"escala {Math.Round(dpi * 100.0 / 96):0}%" : "escala desconhecida";
+            }
+            catch (Exception e)
+            {
+                scale = $"escala desconhecida ({e.Message})";
+            }
             Log(scale);
             await RunAllAsync(output, options, ffmpeg, runs, ct, $"monitor virtual, pedido {width}×{height}, {scale}");
             return 0;
@@ -190,6 +204,13 @@ internal static class Program
         var runner = new BenchRunner(ffmpeg, line => Console.WriteLine($"  {line}"));
         foreach (var variant in options.Variants)
         {
+            if (BenchVariants.SkipReason(variant, output.Width, output.Height) is { } skip)
+            {
+                // Não em silêncio: vai para o console e para o relatório (linha própria, não conta como falha).
+                Console.WriteLine($"→ {skip}");
+                s_skipped.Add(skip);
+                continue;
+            }
             foreach (var scenario in options.Scenarios)
             {
                 ct.ThrowIfCancellationRequested();
@@ -251,6 +272,10 @@ internal static class Program
         foreach (var row in rows)
         {
             text.AppendLine(string.Join(" | ", row.Select((cell, c) => c < 2 ? cell.PadRight(widths[c]) : cell.PadLeft(widths[c]))));
+        }
+        foreach (var skip in s_skipped)
+        {
+            text.AppendLine(skip);
         }
         var failed = runs.Count(run => run.Result is null);
         if (failed > 0)

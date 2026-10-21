@@ -124,6 +124,35 @@ public class BenchVariantsTests
         Assert.Equal("60", args[args.ToList().IndexOf("-g") + 1]);
     }
 
+    /// <summary>ScaleTo é absoluto: na saída 1460×674 (padrão da 5d), 1920×886 e 1704×786 ampliariam a imagem.</summary>
+    [Theory]
+    [InlineData("scale1920")]
+    [InlineData("scale2of3")]
+    [InlineData("veryfast-scale1920")]
+    [InlineData("veryfast-scale2of3")]
+    public void ScaleVariantsAreSkippedWhenTheyWouldEnlarge(string name)
+    {
+        var reason = BenchVariants.SkipReason(Get(name), 1460, 674);
+
+        Assert.NotNull(reason);
+        Assert.Contains(name, reason, StringComparison.Ordinal);
+        Assert.Contains("1460×674", reason, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("scale1920", 1920, 886)] // igual não reduz: também pula
+    [InlineData("scale2of3", 1704, 1179)] // só uma dimensão já basta
+    public void ScaleNotSmallerInEitherDimensionIsSkipped(string name, int width, int height) =>
+        Assert.NotNull(BenchVariants.SkipReason(Get(name), width, height));
+
+    [Fact]
+    public void ScaleVariantsRunOnTheFullSizeAndOthersAlwaysRun()
+    {
+        Assert.Null(BenchVariants.SkipReason(Get("scale1920"), 2556, 1179));
+        Assert.Null(BenchVariants.SkipReason(Get("scale2of3"), 2556, 1179));
+        Assert.All(BenchVariants.All.Where(v => v.Settings.ScaleTo is null), v => Assert.Null(BenchVariants.SkipReason(v, 1460, 674)));
+    }
+
     [Fact]
     public void OnlyFps30ChangesTheFrameRate()
     {
