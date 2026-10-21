@@ -35,6 +35,8 @@ public enum LinkEndReason
 /// O vídeo liga e desliga pelo <see cref="IVideoSwitch"/> (sem ele, fica ligado): ligar abre o feed em paralelo (depois
 /// do descarte do feed anterior) e manda CONFIG junto com a 1ª imagem; desligar — ou o feed parar sozinho, falhar ou não abrir — descarta o feed em
 /// segundo plano (os PINGs continuam) e, se o iPhone tinha recebido CONFIG, manda VIDEO_END; a sessão continua.
+/// A tela preta segue o <see cref="IScreenSwitch"/>: SCREEN só depois do CONFIG da imagem atual (nunca depois do VIDEO_END);
+/// o SCREEN(0) do iPhone (1 toque) só acende a chave, sem resposta.
 /// Ao sair, descarta o vídeo e manda BYE.
 /// </summary>
 public static class LinkSession
@@ -49,7 +51,8 @@ public static class LinkSession
         CancellationToken ct,
         Func<HelloInfo, CancellationToken, Task<IVideoFeed?>>? openVideo = null,
         IVideoSwitch? videoSwitch = null,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        IScreenSwitch? screenSwitch = null)
     {
         var reader = new LinkFrameReader(stream);
         using var writeLock = new SemaphoreSlim(1, 1);
@@ -65,11 +68,17 @@ public static class LinkSession
         Task? sending = null;
         var retiring = new List<Task>();
         var configSent = 0;
+        // O que o iPhone sabe da tela preta (1 = apagada). Volta a 0 no CONFIG e no VIDEO_END (o iPhone acende sozinho
+        // nos dois) e quando ele avisa que acendeu.
+        var phoneDark = 0;
         // Último STATS do iPhone ainda não registrado (null = nenhum desde a última linha).
         StrongBox<LinkStats>? phoneStats = null;
 
         // Toda escrita, inclusive a espera pela vez, tem tempo-limite: um iPhone que parou de ler encerra a sessão.
-        async Task SendAsync(LinkFrame frame, CancellationToken token)
+        Task SendAsync(LinkFrame frame, CancellationToken token) => SendIfAsync(() => frame, token);
+
+        // A mensagem é escolhida já com a vez de escrever (null = nada a mandar): a decisão e a ordem das escritas andam juntas.
+        async Task SendIfAsync(Func<LinkFrame?> next, CancellationToken token)
         {
             using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
             limit.CancelAfter(options.Timeout);
@@ -78,7 +87,10 @@ public static class LinkSession
                 await writeLock.WaitAsync(limit.Token);
                 try
                 {
-                    await stream.WriteAsync(frame.Encode(), limit.Token);
+                    if (next() is { } frame)
+                    {
+                        await stream.WriteAsync(frame.Encode(), limit.Token);
+                    }
                 }
                 finally
                 {
@@ -90,6 +102,23 @@ public static class LinkSession
                 throw new TimeoutException("o iPhone parou de receber");
             }
         }
+
+        // Manda SCREEN se o iPhone, já na Segunda Tela (CONFIG enviado), não sabe o estado atual da tela preta. Chamada pelo
+        // laço (a chave mudou) e pelo envio (logo depois do CONFIG); como decide com a vez de escrever, os dois nunca
+        // mandam o mesmo SCREEN duas vezes nem em ordem trocada, e depois do VIDEO_END (CONFIG zerado) nada sai.
+        Task SyncScreenAsync() => screenSwitch is null ? Task.CompletedTask : SendIfAsync(() =>
+        {
+            if (Volatile.Read(ref configSent) == 0)
+            {
+                return null;
+            }
+            var dark = screenSwitch.WantsDark ? 1 : 0;
+            if (Interlocked.Exchange(ref phoneDark, dark) == dark)
+            {
+                return null;
+            }
+            return LinkMessages.Screen(dark == 1);
+        }, cts.Token);
 
         // Serializa as atualizações para uma medição de latência nunca apagar o vídeo do status (e vice-versa).
         void Update(Func<LinkStatus, LinkStatus> change)
@@ -195,7 +224,10 @@ public static class LinkSession
                     return;
                 }
                 await SendAsync(LinkMessages.Config(activeFeed.Config), cts.Token);
+                Interlocked.Exchange(ref phoneDark, 0); // o CONFIG acende o iPhone
                 Interlocked.Exchange(ref configSent, 1);
+                // Tela preta pedida antes da 1ª imagem: SCREEN(1) logo depois do CONFIG, antes do primeiro VIDEO.
+                await SyncScreenAsync();
                 Update(s => s with { Video = activeFeed.Config, Kind = activeFeed.Kind });
                 // Medidores: os da captura (lidas, fila, descartes) quando houver; as escritas são somadas aqui.
                 var meters = activeFeed.Meters ?? new VideoMeters();
@@ -283,6 +315,7 @@ public static class LinkSession
             if (Interlocked.Exchange(ref configSent, 0) == 1)
             {
                 Update(s => s with { Video = null, Kind = null });
+                Interlocked.Exchange(ref phoneDark, 0); // o VIDEO_END volta o iPhone ao relógio, aceso
                 await SendAsync(LinkMessages.VideoEnd(), cts.Token);
             }
         }
@@ -317,6 +350,11 @@ public static class LinkSession
                             // Só para a linha de medidores; um STATS malformado é ignorado como tipo desconhecido.
                             Interlocked.Exchange(ref phoneStats, new StrongBox<LinkStats>(phone));
                             break;
+                        case LinkMessageType.Screen when LinkMessages.TryParseScreen(frame, out var dark) && !dark:
+                            // 1 toque acendeu o iPhone: anotado antes de avisar a chave, para o laço não responder SCREEN(0).
+                            Interlocked.Exchange(ref phoneDark, 0);
+                            screenSwitch?.PhoneWoke();
+                            break;
                         case LinkMessageType.Bye:
                             return LinkEndReason.Bye;
                     }
@@ -330,12 +368,17 @@ public static class LinkSession
                 StartVideo(helloInfo);
             }
             var switchChanged = videoSwitch?.WaitForChangeAsync(wantVideo, cts.Token) ?? Task.Delay(Timeout.Infinite, cts.Token);
+            var darkChanged = screenSwitch?.WaitForDarkChangeAsync(screenSwitch.WantsDark, cts.Token);
 
             await SendAsync(LinkMessages.Ping((ulong)clock.ElapsedMilliseconds), cts.Token);
             var tick = Task.Delay(options.PingInterval, cts.Token);
             while (true)
             {
-                var pending = new List<Task>(5) { receiving, tick, switchChanged };
+                var pending = new List<Task>(6) { receiving, tick, switchChanged };
+                if (darkChanged is not null)
+                {
+                    pending.Add(darkChanged);
+                }
                 if (sending is not null)
                 {
                     pending.Add(sending);
@@ -366,6 +409,15 @@ public static class LinkSession
                             await StopVideoAsync();
                         }
                     }
+                    continue;
+                }
+                if (done == darkChanged)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    // Relê o valor antes de esperar de novo (uma mudança no meio não se perde); antes do CONFIG não sai
+                    // nada: o envio manda o SCREEN logo depois dele. Uma escrita só, limitada pelo tempo-limite.
+                    darkChanged = screenSwitch!.WaitForDarkChangeAsync(screenSwitch.WantsDark, cts.Token);
+                    await SyncScreenAsync();
                     continue;
                 }
                 if (done == sending)

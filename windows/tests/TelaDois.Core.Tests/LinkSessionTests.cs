@@ -193,15 +193,19 @@ public class LinkSessionTests
     }
 
     /// <summary>
-    /// Lado do iPhone: lê mensagens (anotando o tipo em <c>seen</c> e, se pedido, a hora de chegada em ms em <c>arrivals</c>)
-    /// e responde PING com PONG até <c>done</c>.
+    /// Lado do iPhone: lê mensagens (anotando o tipo em <c>seen</c> e, se pedido, a hora de chegada em ms em <c>arrivals</c>
+    /// e os bytes de cada SCREEN em <c>screens</c>) e responde PING com PONG até <c>done</c>.
     /// </summary>
-    private static async Task AnswerUntilAsync(Stream phone, LinkFrameReader reader, Func<bool> done, List<LinkMessageType> seen, CancellationToken ct, List<long>? arrivals = null)
+    private static async Task AnswerUntilAsync(Stream phone, LinkFrameReader reader, Func<bool> done, List<LinkMessageType> seen, CancellationToken ct, List<long>? arrivals = null, List<string>? screens = null)
     {
         while (!done())
         {
             var frame = await reader.NextAsync(ct) ?? throw new IOException("o PC fechou o socket");
             arrivals?.Add(Environment.TickCount64);
+            if (frame.MessageType == LinkMessageType.Screen)
+            {
+                screens?.Add(Convert.ToHexString(frame.Encode()));
+            }
             seen.Add(frame.MessageType ?? throw new InvalidDataException($"tipo desconhecido: {frame.Type}"));
             if (frame.MessageType == LinkMessageType.Bye && !done())
             {
@@ -910,6 +914,162 @@ public class LinkSessionTests
         await AnswerUntilAsync(phone, reader, () => seen.Count(t => t == LinkMessageType.Ping) >= 6, seen, cts.Token);
         Assert.False(run.IsCompleted);
         Assert.DoesNotContain(log, l => l.StartsWith("vídeo/s: ", StringComparison.Ordinal));
+        await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
+        Assert.Equal(LinkEndReason.Bye, await run);
+    }
+
+    /// <summary>Sessão com o mesmo <see cref="MonitorMode"/> como chave do vídeo e da tela preta; o feed manda imagens a cada 20 ms.</summary>
+    private static Task<LinkEndReason> RunWithScreenAsync(Stream pc, MonitorMode mode, GatedFeed feed, CancellationToken ct) =>
+        LinkSession.RunAsync(pc, _ => { }, Patient, ct, (_, _) => Task.FromResult<IVideoFeed?>(feed), mode, screenSwitch: mode);
+
+    [Fact]
+    public async Task ToggleDarkWithTheVideoOnSendsScreenToThePhone()
+    {
+        var (pc, phone) = await Loopback.CreatePairAsync();
+        await using var _pc = pc;
+        await using var _phone = phone;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var mode = new MonitorMode();
+        mode.SessionStarted();
+        var feed = new GatedFeed(new VideoConfig(2556, 1179, 60), VideoKind.Extend);
+        feed.Release.SetResult();
+        var run = RunWithScreenAsync(pc, mode, feed, cts.Token);
+
+        await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
+        var reader = new LinkFrameReader(phone);
+        var seen = new List<LinkMessageType>();
+        var arrivals = new List<long> { Environment.TickCount64 };
+        var screens = new List<string>();
+        await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.Video), seen, cts.Token, arrivals, screens);
+        Assert.Empty(screens);
+
+        Assert.Equal(DarkToggleResult.TurnedDark, mode.ToggleDark());
+        await AnswerUntilAsync(phone, reader, () => screens.Count >= 1, seen, cts.Token, arrivals, screens);
+        Assert.Equal("0A0000000101", screens[0]);
+
+        Assert.Equal(DarkToggleResult.TurnedLit, mode.ToggleDark());
+        await AnswerUntilAsync(phone, reader, () => screens.Count >= 2, seen, cts.Token, arrivals, screens);
+        Assert.Equal("0A0000000100", screens[1]);
+
+        // Nada repetido e os PINGs seguem: o iPhone nunca fica sem notícia.
+        var afterScreens = seen.Count;
+        await AnswerUntilAsync(phone, reader, () => seen.Skip(afterScreens).Count(t => t == LinkMessageType.Ping) >= 4, seen, cts.Token, arrivals, screens);
+        Assert.Equal(2, screens.Count);
+        AssertNoSilenceLongerThanTimeout(arrivals, Guarded);
+        Assert.False(run.IsCompleted);
+
+        await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
+        Assert.Equal(LinkEndReason.Bye, await run);
+    }
+
+    [Fact]
+    public async Task ToggleDarkBeforeTheFirstFrameSendsScreenRightAfterConfig()
+    {
+        var (pc, phone) = await Loopback.CreatePairAsync();
+        await using var _pc = pc;
+        await using var _phone = phone;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var mode = new MonitorMode();
+        mode.SessionStarted();
+        var feed = new GatedFeed(new VideoConfig(2556, 1179, 60), VideoKind.Extend);
+        var run = RunWithScreenAsync(pc, mode, feed, cts.Token);
+
+        await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
+        var reader = new LinkFrameReader(phone);
+        var seen = new List<LinkMessageType>();
+        var screens = new List<string>();
+        await AnswerUntilAsync(phone, reader, () => seen.Count(t => t == LinkMessageType.Ping) >= 2, seen, cts.Token, screens: screens);
+        Assert.Equal(DarkToggleResult.TurnedDark, mode.ToggleDark());
+        // Sem CONFIG o iPhone ainda está no relógio (e ignoraria o SCREEN): nada sai antes da 1ª imagem.
+        await AnswerUntilAsync(phone, reader, () => seen.Count(t => t == LinkMessageType.Ping) >= 6, seen, cts.Token, screens: screens);
+        Assert.Empty(screens);
+
+        feed.Release.SetResult();
+        await AnswerUntilAsync(phone, reader, () => screens.Count >= 1 && seen.Contains(LinkMessageType.Video), seen, cts.Token, screens: screens);
+        var config = seen.IndexOf(LinkMessageType.Config);
+        Assert.True(config >= 0);
+        Assert.Equal(LinkMessageType.Screen, seen.Skip(config + 1).First(t => t != LinkMessageType.Ping));
+        Assert.Equal(["0A0000000101"], screens);
+
+        var afterScreen = seen.Count;
+        await AnswerUntilAsync(phone, reader, () => seen.Skip(afterScreen).Count(t => t == LinkMessageType.Ping) >= 4, seen, cts.Token, screens: screens);
+        Assert.Single(screens);
+
+        await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
+        Assert.Equal(LinkEndReason.Bye, await run);
+    }
+
+    [Fact]
+    public async Task PhoneThatWakesItsScreenLightsTheModeWithoutAnAnswer()
+    {
+        var (pc, phone) = await Loopback.CreatePairAsync();
+        await using var _pc = pc;
+        await using var _phone = phone;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var mode = new MonitorMode();
+        mode.SessionStarted();
+        var feed = new GatedFeed(new VideoConfig(2556, 1179, 60), VideoKind.Extend);
+        feed.Release.SetResult();
+        var run = RunWithScreenAsync(pc, mode, feed, cts.Token);
+
+        await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
+        var reader = new LinkFrameReader(phone);
+        var seen = new List<LinkMessageType>();
+        var screens = new List<string>();
+        await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.Video), seen, cts.Token, screens: screens);
+        mode.ToggleDark();
+        await AnswerUntilAsync(phone, reader, () => screens.Count >= 1, seen, cts.Token, screens: screens);
+
+        // 1 toque no iPhone: ele acende sozinho e avisa o PC, que só anota.
+        await phone.WriteAsync(LinkMessages.Screen(false).Encode(), cts.Token);
+        var afterWake = seen.Count;
+        await AnswerUntilAsync(phone, reader, () => !mode.WantsDark && seen.Skip(afterWake).Count(t => t == LinkMessageType.Ping) >= 6, seen, cts.Token, screens: screens);
+        Assert.Equal(["0A0000000101"], screens);
+        Assert.True(mode.WantsVideo);
+        Assert.False(run.IsCompleted);
+
+        await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
+        Assert.Equal(LinkEndReason.Bye, await run);
+    }
+
+    [Fact]
+    public async Task SwitchingTheVideoOffWhileDarkSendsVideoEndAndNoScreenAfterIt()
+    {
+        var (pc, phone) = await Loopback.CreatePairAsync();
+        await using var _pc = pc;
+        await using var _phone = phone;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var mode = new MonitorMode();
+        mode.SessionStarted();
+        var feed = new GatedFeed(new VideoConfig(2556, 1179, 60), VideoKind.Extend);
+        feed.Release.SetResult();
+        var run = RunWithScreenAsync(pc, mode, feed, cts.Token);
+
+        await phone.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), cts.Token);
+        var reader = new LinkFrameReader(phone);
+        var seen = new List<LinkMessageType>();
+        var arrivals = new List<long> { Environment.TickCount64 };
+        var screens = new List<string>();
+        await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.Video), seen, cts.Token, arrivals, screens);
+        mode.ToggleDark();
+        await AnswerUntilAsync(phone, reader, () => screens.Count >= 1, seen, cts.Token, arrivals, screens);
+
+        Assert.Equal(ToggleResult.TurnedOff, mode.Toggle());
+        Assert.False(mode.WantsDark);
+        await AnswerUntilAsync(phone, reader, () => seen.Contains(LinkMessageType.VideoEnd), seen, cts.Token, arrivals, screens);
+        var videoEnd = seen.IndexOf(LinkMessageType.VideoEnd);
+        await AnswerUntilAsync(phone, reader, () => feed.Disposed && seen.Skip(videoEnd + 1).Count(t => t == LinkMessageType.Ping) >= 6, seen, cts.Token, arrivals, screens);
+        Assert.DoesNotContain(LinkMessageType.Screen, seen.Skip(videoEnd + 1));
+        Assert.DoesNotContain(LinkMessageType.Video, seen.Skip(videoEnd + 1));
+        Assert.False(mode.WantsDark);
+        AssertNoSilenceLongerThanTimeout(arrivals, Guarded);
+
+        // Ligado de novo, a tela começa acesa: nenhum SCREEN junto do CONFIG novo.
+        var afterOff = seen.Count;
+        Assert.Equal(ToggleResult.TurnedOn, mode.Toggle());
+        await AnswerUntilAsync(phone, reader, () => seen.Skip(afterOff).Contains(LinkMessageType.Video) && seen.Skip(afterOff).Count(t => t == LinkMessageType.Ping) >= 4, seen, cts.Token, arrivals, screens);
+        Assert.DoesNotContain(LinkMessageType.Screen, seen.Skip(afterOff));
+
         await phone.WriteAsync(LinkMessages.Bye().Encode(), cts.Token);
         Assert.Equal(LinkEndReason.Bye, await run);
     }
