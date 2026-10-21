@@ -179,4 +179,46 @@ final class RestScreenUITests: XCTestCase {
         attachScreenshot("07-fim-do-video")
         pc.send(LinkProtocol.bye())
     }
+
+    func testScreenDarkBlacksOutSecondScreenAndOneTapWakesAndTellsThePc() throws {
+        let app = launch()
+        guard let pc = FakePC.connect() else { return XCTFail("o app não aceitou conexão em 127.0.0.1:7100") }
+        XCTAssertNotNil(pc.readFrame().flatMap(LinkProtocol.parseHello))
+
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "bars-640x360", withExtension: "h264"))
+        let units = H264Parser.accessUnits(in: [UInt8](try Data(contentsOf: url)))
+        pc.send(LinkProtocol.config(width: 640, height: 360, fps: 30))
+        for (index, unit) in units.enumerated() {
+            pc.send(LinkProtocol.video(keyframe: index == 0, timestamp: UInt64(index) * 33_333, accessUnit: unit))
+        }
+        XCTAssertTrue(element(app, "second-screen").waitForExistence(timeout: 2), "deveria mostrar a Segunda Tela")
+
+        // O app derruba o PC após 3 s sem notícias: as esperas abaixo continuam mandando PING.
+        pc.send(LinkProtocol.screen(dark: true))
+        let overlay = element(app, "screen-dark-overlay")
+        XCTAssertTrue(overlay.waitForExistence(timeout: 2), "SCREEN(1) deveria cobrir a Segunda Tela de preto")
+        // Brilho do print baixo: as barras do vídeo não podem aparecer por baixo da camada.
+        var black = false
+        for _ in 0..<10 where !black {
+            pc.send(LinkProtocol.ping(1))
+            black = Self.maxBrightness(XCUIScreen.main.screenshot().image) < 0.05
+            if !black { Thread.sleep(forTimeInterval: 0.5) }
+        }
+        XCTAssertTrue(black, "a tela deveria ficar preta")
+        attachScreenshot("08-tela-preta")
+
+        // Um toque acende, e a Segunda Tela continua.
+        overlay.tap()
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: overlay)
+        wait(for: [gone], timeout: 3)
+        XCTAssertTrue(element(app, "second-screen").exists, "a Segunda Tela continua depois de acender")
+
+        // O app avisa o PC com SCREEN(0).
+        pc.send(LinkProtocol.ping(1))
+        var frame = pc.readFrame()
+        while let current = frame, current.messageType != .screen { frame = pc.readFrame() }
+        let dark = frame.flatMap(LinkProtocol.parseScreen)
+        XCTAssertEqual(dark, false, "o toque deveria mandar SCREEN(0) ao PC")
+        pc.send(LinkProtocol.bye())
+    }
 }
