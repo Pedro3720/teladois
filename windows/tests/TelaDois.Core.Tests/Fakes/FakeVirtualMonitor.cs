@@ -17,6 +17,9 @@ internal sealed class FakeVirtualMonitor : IVirtualMonitor
     public DisplayModeInfo Mode { get; set; } = new(2556, 1179, 60);
     public Exception? AttachError { get; set; }
 
+    /// <summary>O tamanho pedido no último <see cref="Attach"/>.</summary>
+    public (int Width, int Height)? AttachRequested { get; private set; }
+
     /// <summary>Com <c>true</c>, <see cref="Detach"/> anota a chamada mas o monitor continua no desktop (desligamento silencioso que falhou).</summary>
     public bool StaysAttached { get; set; }
 
@@ -86,6 +89,7 @@ internal sealed class FakeVirtualMonitor : IVirtualMonitor
             throw AttachError;
         }
         Calls.Enqueue("Attach");
+        AttachRequested = (width, height);
         Attached = AttachTakes;
         return (Device, Mode);
     }

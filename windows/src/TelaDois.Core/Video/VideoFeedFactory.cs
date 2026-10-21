@@ -6,7 +6,7 @@ namespace TelaDois.Core.Video;
 
 /// <summary>
 /// Ao ligar o vídeo de uma sessão: acha o FFmpeg; ativa o dispositivo do monitor virtual, liga-o com a resolução do
-/// iPhone e captura ele (Estender); sem driver, ou se ativar/ligar/achar o monitor falhar, captura um monitor existente
+/// iPhone ÷ 1,75 (<see cref="VirtualMonitorSize"/>, para a escala 100%) e captura ele (Estender); sem driver, ou se ativar/ligar/achar o monitor falhar, captura um monitor existente
 /// (Duplicar). Toda falha depois de ativar desliga e desativa o monitor (o Windows só o lista enquanto está em uso).
 /// Só mexe em monitores pelo <see cref="IVirtualMonitor"/>.
 /// </summary>
@@ -132,9 +132,11 @@ public sealed class VideoFeedFactory(
     {
         string device;
         DisplayModeInfo mode;
+        // Etapa 5d: o tamanho do iPhone ÷ 1,75, para o monitor em escala 100% (o iPhone amplia a imagem).
+        var (width, height) = VirtualMonitorSize.For((int)Math.Min(hello.Width, int.MaxValue), (int)Math.Min(hello.Height, int.MaxValue));
         try
         {
-            (device, mode) = monitor.Attach((int)hello.Width, (int)hello.Height);
+            (device, mode) = monitor.Attach(width, height);
         }
         catch (Exception e) when (e is DisplayChangeException or InvalidOperationException)
         {
@@ -150,9 +152,9 @@ public sealed class VideoFeedFactory(
         }
         try
         {
-            if (mode.Width != hello.Width || mode.Height != hello.Height)
+            if (mode.Width != width || mode.Height != height)
             {
-                log($"o monitor virtual não tem {hello.Width}×{hello.Height}: usando {mode.Width}×{mode.Height}");
+                log($"o monitor virtual não tem {width}×{height}: usando {mode.Width}×{mode.Height} (rode tools\\vdd\\instalar-vdd.ps1 de novo como administrador)");
             }
             var waited = Stopwatch.StartNew();
             var output = await WaitForOutputAsync(device, ct);

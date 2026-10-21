@@ -381,7 +381,26 @@ public class VideoFeedFactoryTests
         await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
 
         Assert.Equal(new VideoConfig(2622, 1206, 60), feed!.Config);
-        Assert.Contains("o monitor virtual não tem 2556×1179: usando 2622×1206", log);
+        // Driver sem os modos novos (instalador antigo): avisa no registro para rodar o instalador de novo.
+        Assert.Contains(log, line => line.StartsWith("o monitor virtual não tem 1460×674: usando 2622×1206", StringComparison.Ordinal)
+            && line.Contains("instalar-vdd.ps1", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ExtendsAtTheIphoneResolutionDividedByOnePointSevenFive()
+    {
+        // Etapa 5d (§7): em 100%, 1460×674 mostra o texto do tamanho de 2556×1179 em 175%, sem misturar escalas.
+        var monitor = new FakeVirtualMonitor { Mode = new DisplayModeInfo(1460, 674, 60) };
+        var small = Virtual with { Width = 1460, Height = 674 };
+        var log = new ConcurrentQueue<string>();
+        var factory = new VideoFeedFactory("ffmpeg", WorkingRunner(), () => monitor.Attached ? new[] { Main, small } : new[] { Main }, () => null, log.Enqueue, monitor);
+
+        await using var feed = await factory.OpenAsync(Hello, CancellationToken.None);
+
+        Assert.Equal((1460, 674), monitor.AttachRequested);
+        Assert.Equal(VideoKind.Extend, feed!.Kind);
+        Assert.Equal(new VideoConfig(1460, 674, 60), feed.Config);
+        Assert.DoesNotContain(log, line => line.Contains("não tem"));
     }
 
     [Fact]
