@@ -12,7 +12,8 @@ public sealed class ScheduledTaskSwitch(IProcessRunner runner, Action<string> lo
     public const string EnableTask = @"\TelaDois\Ligar monitor virtual";
     public const string DisableTask = @"\TelaDois\Desligar monitor virtual";
 
-    private const string Schtasks = "schtasks.exe";
+    // Caminho completo: só o nome faria o Windows procurar primeiro na pasta do TelaDois.exe.
+    private static readonly string Schtasks = Path.Combine(Environment.SystemDirectory, "schtasks.exe");
 
     /// <summary>Prazo de cada <c>schtasks</c>; depois dele o processo é encerrado e a resposta é "não".</summary>
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(10);

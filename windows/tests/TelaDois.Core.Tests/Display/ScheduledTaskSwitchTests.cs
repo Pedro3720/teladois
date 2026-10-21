@@ -28,6 +28,9 @@ public class ScheduledTaskSwitchTests
         return (new ScheduledTaskSwitch(files, log.Enqueue), runner, files, log);
     }
 
+    // Caminho completo: sem ele o Windows procura primeiro um schtasks.exe na pasta do TelaDois.exe.
+    private static readonly string SystemSchtasks = Path.Combine(Environment.SystemDirectory, "schtasks.exe");
+
     [Fact]
     public void TaskNamesMatchTheInstaller()
     {
@@ -45,7 +48,7 @@ public class ScheduledTaskSwitchTests
         Assert.Equal(
             new[] { new[] { "/query", "/tn", ScheduledTaskSwitch.EnableTask }, new[] { "/query", "/tn", ScheduledTaskSwitch.DisableTask } },
             runner.Started.Select(a => a.ToArray()).ToArray());
-        Assert.All(files.Files, f => Assert.Equal("schtasks.exe", f));
+        Assert.All(files.Files, f => Assert.Equal(SystemSchtasks, f));
     }
 
     [Theory]
@@ -77,7 +80,7 @@ public class ScheduledTaskSwitchTests
         Assert.True(await device.RunAsync(enable, CancellationToken.None));
 
         Assert.Equal(new[] { "/run", "/tn", task }, Assert.Single(runner.Started));
-        Assert.Equal("schtasks.exe", Assert.Single(files.Files));
+        Assert.Equal(SystemSchtasks, Assert.Single(files.Files));
         Assert.Empty(log);
         Assert.Equal(1, runner.Disposed);
     }
