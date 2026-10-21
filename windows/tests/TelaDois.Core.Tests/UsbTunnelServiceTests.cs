@@ -5,6 +5,7 @@ using TelaDois.Core.Display;
 using TelaDois.Core.Link;
 using TelaDois.Core.Tests.Fakes;
 using TelaDois.Core.Usbmux;
+using TelaDois.Core.Video;
 
 namespace TelaDois.Core.Tests;
 
@@ -233,5 +234,68 @@ public class UsbTunnelServiceTests
         Assert.False(monitor.WantsVideo);
         cts.Cancel();
         await run;
+    }
+
+    [Fact]
+    public async Task ToggleDarkWithTheVideoOnSendsScreenToThePhone()
+    {
+        await using var usbmuxd = new FakeUsbmuxd();
+        var sawVideo = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var screens = new ConcurrentQueue<bool>();
+        var screenArrived = new SemaphoreSlim(0);
+        usbmuxd.Phone = async (stream, ct) =>
+        {
+            await stream.WriteAsync(LinkMessages.Hello(2556, 1179).Encode(), ct);
+            var reader = new LinkFrameReader(stream);
+            while (await reader.NextAsync(ct) is { } frame)
+            {
+                if (frame.MessageType == LinkMessageType.Ping && LinkMessages.TryReadTimestamp(frame, out var sent))
+                {
+                    await stream.WriteAsync(LinkMessages.Pong(sent).Encode(), ct);
+                }
+                else if (frame.MessageType == LinkMessageType.Video)
+                {
+                    sawVideo.TrySetResult();
+                }
+                else if (frame.MessageType == LinkMessageType.Screen && LinkMessages.TryParseScreen(frame, out var dark))
+                {
+                    screens.Enqueue(dark);
+                    screenArrived.Release();
+                }
+            }
+        };
+        var monitor = new MonitorMode();
+        var service = new UsbTunnelService(new UsbmuxClient(usbmuxd.Endpoint), Fast, _ => { }, (_, _) => Task.FromResult<IVideoFeed?>(new SteadyFeed()), monitor)
+        {
+            Retry = TimeSpan.FromMilliseconds(100),
+        };
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var run = service.RunAsync(cts.Token);
+
+        await sawVideo.Task.WaitAsync(cts.Token);
+        Assert.Equal(DarkToggleResult.TurnedDark, monitor.ToggleDark());
+        await screenArrived.WaitAsync(cts.Token);
+        Assert.Equal([true], screens);
+        cts.Cancel();
+        await run;
+    }
+
+    /// <summary>Uma imagem completa e depois imagens a cada 20 ms, até ser descartado.</summary>
+    private sealed class SteadyFeed : IVideoFeed
+    {
+        private int _sent;
+        public VideoConfig Config => new(2556, 1179, 60);
+
+        public async Task<AccessUnit> NextAsync(CancellationToken ct)
+        {
+            if (Interlocked.Increment(ref _sent) == 1)
+            {
+                return new AccessUnit([0, 0, 0, 1, 9, 0xF0, 0, 0, 0, 1, 0x65], true);
+            }
+            await Task.Delay(20, ct);
+            return new AccessUnit([0, 0, 0, 1, 9, 0xF0, 0, 0, 0, 1, 0x41], false);
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

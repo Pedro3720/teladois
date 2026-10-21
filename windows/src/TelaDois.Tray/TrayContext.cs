@@ -6,7 +6,7 @@ using TelaDois.Core.Video;
 
 namespace TelaDois.Tray;
 
-/// <summary>Ícone na bandeja: estado do túnel, Modo monitor (Win+Shift+]) e o monitor duplicado sem driver.</summary>
+/// <summary>Ícone na bandeja: estado do túnel, Modo monitor (Win+Shift+]), tela preta (Win+Shift+[) e o monitor duplicado sem driver.</summary>
 internal sealed class TrayContext : ApplicationContext
 {
     /// <summary>Ao sair, quanto esperar a sessão descartar o vídeo e mandar BYE.</summary>
@@ -22,8 +22,10 @@ internal sealed class TrayContext : ApplicationContext
     private readonly MonitorMode _monitor = new();
     private readonly VirtualDisplay _virtualDisplay;
     private readonly ToolStripMenuItem _monitorItem;
+    private readonly ToolStripMenuItem _darkItem;
     private readonly SynchronizationContext _ui;
     private readonly Hotkey _hotkey;
+    private readonly Hotkey _darkHotkey;
     private readonly Task _running;
     private volatile bool _closing;
     private TunnelState? _lastState;
@@ -39,6 +41,9 @@ internal sealed class TrayContext : ApplicationContext
         _monitorItem = new ToolStripMenuItem("Modo monitor (Win+Shift+])") { Enabled = false };
         _monitorItem.Click += (_, _) => ToggleMonitor();
         menu.Items.Add(_monitorItem);
+        _darkItem = new ToolStripMenuItem("Tela preta no iPhone (Win+Shift+[)") { Enabled = false };
+        _darkItem.Click += (_, _) => ToggleDark();
+        menu.Items.Add(_darkItem);
         var monitors = new ToolStripMenuItem("Monitor transmitido");
         monitors.DropDownItems.Add("(carregando)");
         monitors.DropDownOpening += (_, _) => FillMonitors(monitors);
@@ -86,17 +91,22 @@ internal sealed class TrayContext : ApplicationContext
         };
         // Os eventos chegam de threads diferentes e fora da trava (podem chegar fora de ordem): na thread da bandeja,
         // relê o estado atual em vez de confiar nos argumentos.
-        _monitor.StateChanged += (_, _) => PostToUi(() =>
-        {
-            _monitorItem.Enabled = _monitor.IsConnected;
-            _monitorItem.Checked = _monitor.WantsVideo;
-        });
+        _monitor.StateChanged += (_, _) => PostToUi(RefreshMenu);
+        // DarkChanged chega na thread que lê o socket do iPhone (toque na tela): só posta, nunca bloqueia nem lança.
+        _monitor.DarkChanged += _ => PostToUi(RefreshMenu);
 
         _hotkey = new Hotkey(']', ToggleMonitor);
         if (!_hotkey.Registered)
         {
             _log.Write("atalho Win+Shift+] indisponível (outro programa já usa ou a tecla não existe neste teclado)");
             _icon.ShowBalloonTip(10000, "TelaDois", "O atalho Win+Shift+] está em uso por outro programa. Use o item \"Modo monitor\" da bandeja.", ToolTipIcon.Warning);
+        }
+
+        _darkHotkey = new Hotkey('[', ToggleDark);
+        if (!_darkHotkey.Registered)
+        {
+            _log.Write("atalho Win+Shift+[ não está disponível (outro programa já usa ou a tecla não existe neste teclado)");
+            _icon.ShowBalloonTip(10000, "TelaDois", "O atalho Win+Shift+[ não está disponível. Use o item \"Tela preta no iPhone\" da bandeja.", ToolTipIcon.Warning);
         }
 
         var service = new UsbTunnelService(new UsbmuxClient(UsbmuxClient.DefaultEndpoint), LinkSessionOptions.Default, _log.Write, video.OpenAsync, _monitor);
@@ -145,6 +155,15 @@ internal sealed class TrayContext : ApplicationContext
         }
     }
 
+    /// <summary>Na thread da bandeja: relê o estado do <see cref="MonitorMode"/> e acerta os dois itens do menu.</summary>
+    private void RefreshMenu()
+    {
+        _monitorItem.Enabled = _monitor.IsConnected;
+        _monitorItem.Checked = _monitor.WantsVideo;
+        _darkItem.Enabled = _monitor.IsConnected && _monitor.WantsVideo;
+        _darkItem.Checked = _monitor.WantsDark;
+    }
+
     private void ToggleMonitor()
     {
         var result = _monitor.Toggle();
@@ -158,6 +177,16 @@ internal sealed class TrayContext : ApplicationContext
         {
             _icon.ShowBalloonTip(3000, "TelaDois", "Conecte o iPhone pelo cabo com o TelaDois aberto", ToolTipIcon.Info);
         }
+    }
+
+    private void ToggleDark()
+    {
+        _log.Write(_monitor.ToggleDark() switch
+        {
+            DarkToggleResult.TurnedDark => "tela preta: ligada",
+            DarkToggleResult.TurnedLit => "tela preta: desligada",
+            _ => "tela preta: modo monitor desligado",
+        });
     }
 
     /// <summary>
@@ -309,6 +338,7 @@ internal sealed class TrayContext : ApplicationContext
         DetachLeftover("ao sair");
         PowerOffOnExit();
         _hotkey.Dispose();
+        _darkHotkey.Dispose();
         _icon.Visible = false;
         _icon.Dispose();
         _log.Write("TelaDois encerrado");

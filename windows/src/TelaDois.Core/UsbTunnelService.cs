@@ -120,7 +120,8 @@ public sealed class UsbTunnelService(UsbmuxClient usbmux, LinkSessionOptions opt
                         ct,
                         openVideo,
                         monitor,
-                        log);
+                        log,
+                        monitor);
                     log($"sessão encerrada: {reason}");
                 }
                 finally
