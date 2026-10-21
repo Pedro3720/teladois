@@ -5,12 +5,71 @@ public sealed record EncoderProfile(string Id, string Codec, string Filter, IRea
 {
     /// <summary>
     /// Tamanho que sai do FFmpeg para um monitor de <paramref name="width"/>×<paramref name="height"/> (é o que o
-    /// CONFIG informa): par quando o filtro corta para par; senão, o do monitor.
+    /// CONFIG informa): par quando o filtro corta para par; senão, o do monitor. Com <see cref="EncodeSettings.ScaleTo"/>
+    /// (e um perfil que filtra) é o tamanho alvo, arredondado para baixo para par.
     /// </summary>
-    public (int Width, int Height) EncodedSize(int width, int height) =>
-        Filter.Contains(EncoderProfiles.EvenCrop, StringComparison.Ordinal) || Filter.Contains(EncoderProfiles.QsvEvenCrop, StringComparison.Ordinal)
-            ? (width & ~1, height & ~1)
-            : (width, height);
+    public (int Width, int Height) EncodedSize(int width, int height, EncodeSettings? settings = null)
+    {
+        if (settings?.ScaleTo is { } target && CropsToEven)
+        {
+            return (target.Width & ~1, target.Height & ~1);
+        }
+        return CropsToEven ? (width & ~1, height & ~1) : (width, height);
+    }
+
+    private bool CropsToEven =>
+        Filter.Contains(EncoderProfiles.EvenCrop, StringComparison.Ordinal) || Filter.Contains(EncoderProfiles.QsvEvenCrop, StringComparison.Ordinal);
+
+    /// <summary>
+    /// O filtro do perfil com <see cref="EncodeSettings.ScaleTo"/> aplicado: <c>vpp_qsv</c> ganha <c>:w=:h=</c>; os
+    /// perfis com download ganham <c>,scale=W:H</c> logo depois do corte. Perfis sem filtro não mudam.
+    /// </summary>
+    public string FilterFor(EncodeSettings? settings)
+    {
+        if (settings?.ScaleTo is not { } target || !CropsToEven)
+        {
+            return Filter;
+        }
+        var (w, h) = (target.Width & ~1, target.Height & ~1);
+        return Filter.Contains(EncoderProfiles.QsvEvenCrop, StringComparison.Ordinal)
+            ? Filter.Replace(EncoderProfiles.QsvEvenCrop, $"{EncoderProfiles.QsvEvenCrop}:w={w}:h={h}", StringComparison.Ordinal)
+            : Filter.Replace(EncoderProfiles.EvenCrop, $"{EncoderProfiles.EvenCrop},scale={w}:{h}", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// As opções do perfil com <see cref="EncodeSettings.CodecOptionOverrides"/> trocadas no lugar; chaves que o perfil
+    /// não tem e <see cref="EncodeSettings.ExtraCodecOptions"/> vão no fim.
+    /// </summary>
+    public IReadOnlyList<string> OptionsFor(EncodeSettings? settings)
+    {
+        if (settings is null)
+        {
+            return Options;
+        }
+        var result = new List<string>(Options);
+        foreach (var (key, value) in settings.CodecOptionOverrides)
+        {
+            var index = -1;
+            for (var i = 0; i + 1 < result.Count; i += 2)
+            {
+                if (string.Equals(result[i], key, StringComparison.Ordinal))
+                {
+                    index = i;
+                    break;
+                }
+            }
+            if (index >= 0)
+            {
+                result[index + 1] = value;
+            }
+            else
+            {
+                result.AddRange([key, value]);
+            }
+        }
+        result.AddRange(settings.ExtraCodecOptions);
+        return result;
+    }
 }
 
 public static class EncoderProfiles

@@ -101,6 +101,150 @@ public class FfmpegArgumentsTests
         Assert.True(code == 0, process.RecentErrors);
     }
 
+    // ---- EncodeSettings (Etapa 5d): padrões = linha de hoje -------------------------------------------------------
+
+    /// <summary>A linha de hoje, montada à mão com os valores da base, para qualquer perfil.</summary>
+    private static string TodayLine(EncoderProfile p, int output)
+    {
+        var parts = new List<string> { "-nostdin -hide_banner -loglevel warning -f lavfi -i ddagrab=output_idx=" + output + ":framerate=60:draw_mouse=1" };
+        if (p.Filter.Length > 0)
+        {
+            parts.Add("-vf " + p.Filter);
+        }
+        parts.Add("-c:v " + p.Codec);
+        parts.AddRange(p.Options);
+        parts.Add("-bf 0 -g 120 -b:v 12M -maxrate 20M -bufsize 4M -bsf:v h264_metadata=aud=insert -f h264 pipe:1");
+        return string.Join(' ', parts);
+    }
+
+    public static TheoryData<string> AllProfileIds()
+    {
+        var data = new TheoryData<string>();
+        foreach (var p in EncoderProfiles.Candidates)
+        {
+            data.Add(p.Id);
+        }
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(AllProfileIds))]
+    public void DefaultSettingsProduceTodaysLine(string id)
+    {
+        var p = EncoderProfiles.Candidates.Single(x => x.Id == id);
+        var today = TodayLine(p, 2);
+        Assert.Equal(today, string.Join(' ', FfmpegArguments.ForMonitor(p, 2, 60)));
+        Assert.Equal(today, string.Join(' ', FfmpegArguments.ForMonitor(p, 2, 60, EncodeSettings.Default)));
+        Assert.Equal(today, string.Join(' ', FfmpegArguments.ForMonitor(p, 2, 60, new EncodeSettings())));
+    }
+
+    [Fact]
+    public void ProbeWithDefaultSettingsIsUnchanged()
+    {
+        var p = Qsv;
+        Assert.Equal(
+            FfmpegArguments.Probe(p, 0),
+            FfmpegArguments.Probe(p, 0, EncodeSettings.Default));
+    }
+
+    [Fact]
+    public void GopSecondsScalesTheKeyframeInterval()
+    {
+        var args = string.Join(' ', FfmpegArguments.ForMonitor(Qsv, 2, 60, new EncodeSettings { GopSeconds = 4 }));
+        Assert.Contains(" -g 240 ", args);
+    }
+
+    [Fact]
+    public void RatesComeFromTheSettings()
+    {
+        var args = string.Join(' ', FfmpegArguments.ForMonitor(Qsv, 2, 60, new EncodeSettings { Bitrate = "8M", Maxrate = "12M", Bufsize = "200k" }));
+        Assert.Contains("-b:v 8M -maxrate 12M -bufsize 200k", args);
+    }
+
+    [Fact]
+    public void GrabOptionsGoAtTheEndOfTheDdagrabGraph()
+    {
+        var s = new EncodeSettings { GrabOptions = ":dup_frames=0" };
+        Assert.Contains("-i ddagrab=output_idx=2:framerate=60:draw_mouse=1:dup_frames=0 -vf", string.Join(' ', FfmpegArguments.ForMonitor(Qsv, 2, 60, s)));
+        Assert.Contains("-i ddagrab=output_idx=2:framerate=60:draw_mouse=1:dup_frames=0 -vf", string.Join(' ', FfmpegArguments.Probe(Qsv, 2, s)));
+    }
+
+    [Fact]
+    public void OverrideReplacesTheProfileOptionInPlace()
+    {
+        var s = new EncodeSettings { CodecOptionOverrides = new Dictionary<string, string> { ["-low_power"] = "1" } };
+        var args = string.Join(' ', FfmpegArguments.ForMonitor(Qsv, 2, 60, s));
+        Assert.Contains("-c:v h264_qsv -low_power 1 -look_ahead 0 -async_depth 1 -bf 0", args);
+        Assert.DoesNotContain("-low_power 0", args);
+    }
+
+    [Fact]
+    public void UnknownOverrideKeyIsAppendedFollowedByExtraOptions()
+    {
+        var s = new EncodeSettings
+        {
+            CodecOptionOverrides = new Dictionary<string, string> { ["-preset"] = "veryfast" },
+            ExtraCodecOptions = ["-int_ref_type", "vertical"],
+        };
+        var args = string.Join(' ', FfmpegArguments.ForMonitor(Qsv, 2, 60, s));
+        Assert.Contains("-c:v h264_qsv -low_power 0 -look_ahead 0 -async_depth 1 -preset veryfast -int_ref_type vertical -bf 0", args);
+    }
+
+    [Fact]
+    public void OverridesAndExtrasApplyToTheProbeToo()
+    {
+        var s = new EncodeSettings { CodecOptionOverrides = new Dictionary<string, string> { ["-low_power"] = "1" }, ExtraCodecOptions = ["-x", "y"] };
+        var args = string.Join(' ', FfmpegArguments.Probe(Qsv, 0, s));
+        Assert.Contains("-low_power 1 -look_ahead 0 -async_depth 1 -x y -frames:v 3", args);
+    }
+
+    [Fact]
+    public void ScaleToOnQsvHwmapGoesIntoVppQsv()
+    {
+        var s = new EncodeSettings { ScaleTo = (1920, 886) };
+        var args = FfmpegArguments.ForMonitor(Qsv, 2, 60, s);
+        Assert.Contains("hwmap=derive_device=qsv,format=qsv,vpp_qsv=cw=trunc(iw/2)*2:ch=trunc(ih/2)*2:w=1920:h=886", args);
+        Assert.Equal((1920, 886), Qsv.EncodedSize(2556, 1179, s));
+    }
+
+    [Fact]
+    public void ScaleToOnDownloadProfilesAddsScaleAfterTheCrop()
+    {
+        var x264 = EncoderProfiles.Candidates.Single(p => p.Id == "x264");
+        var s = new EncodeSettings { ScaleTo = (1920, 886) };
+        var args = FfmpegArguments.ForMonitor(x264, 2, 60, s);
+        Assert.Contains("hwdownload,format=bgra,crop=trunc(iw/2)*2:trunc(ih/2)*2,scale=1920:886,format=yuv420p", args);
+        Assert.Equal((1920, 886), x264.EncodedSize(2556, 1179, s));
+    }
+
+    [Fact]
+    public void ScaleToIsRoundedDownToEven()
+    {
+        var s = new EncodeSettings { ScaleTo = (1705, 787) };
+        Assert.Equal((1704, 786), Qsv.EncodedSize(2556, 1179, s));
+        Assert.Contains(":w=1704:h=786", string.Join(' ', FfmpegArguments.ForMonitor(Qsv, 2, 60, s)));
+    }
+
+    /// <summary>amf-d3d11 e nvenc-d3d11 não têm filtro (não dá para provar um aqui): ScaleTo é ignorado.</summary>
+    [Theory]
+    [InlineData("amf-d3d11")]
+    [InlineData("nvenc-d3d11")]
+    public void ScaleToIsIgnoredByProfilesWithoutFilter(string id)
+    {
+        var p = EncoderProfiles.Candidates.Single(x => x.Id == id);
+        var s = new EncodeSettings { ScaleTo = (1920, 886) };
+        Assert.Equal(FfmpegArguments.ForMonitor(p, 2, 60), FfmpegArguments.ForMonitor(p, 2, 60, s));
+        Assert.Equal((2556, 1179), p.EncodedSize(2556, 1179, s));
+    }
+
+    [Fact]
+    public void EncodeWithSettingsKeepsFrameCount()
+    {
+        var args = string.Join(' ', FfmpegArguments.Encode(Qsv, "testsrc=size=64x64:rate=30", 30, frames: 5, settings: new EncodeSettings { GopSeconds = 1 }));
+        Assert.Contains("-g 30 ", args);
+        Assert.Contains("-frames:v 5", args);
+    }
+
     [Fact]
     public void FindsFfmpegInPath()
     {
