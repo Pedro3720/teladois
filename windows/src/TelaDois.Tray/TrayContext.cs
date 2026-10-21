@@ -54,7 +54,6 @@ internal sealed class TrayContext : ApplicationContext
         };
         _log.Write("TelaDois iniciado");
         DetachLeftover("ao abrir");
-        PowerOffInBackground();
 
         _ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
         var video = new VideoFeedFactory(FfmpegLocator.Find(), new SystemProcessRunner(), DisplayCatalog.Enumerate, () => _settings.Monitor, _log.Write, _virtualDisplay);
@@ -69,20 +68,20 @@ internal sealed class TrayContext : ApplicationContext
         };
         video.DriverMissing += () =>
         {
-            video.DeviceSwitchMissing += () =>
+            // Também uma vez por execução: sem o driver, toda abertura do vídeo avisa.
+            if (Interlocked.Exchange(ref _driverWarned, 1) == 0)
+            {
+                PostToUi(() => _icon.ShowBalloonTip(10000, "TelaDois",
+                    @"Monitor virtual não instalado: duplicando um monitor. Para estender, rode tools\vdd\instalar-vdd.ps1 como administrador.", ToolTipIcon.Info));
+            }
+        };
+        video.DeviceSwitchMissing += () =>
         {
             // Também uma vez por execução: a fábrica avisa a cada conexão.
             if (Interlocked.Exchange(ref _switchWarned, 1) == 0)
             {
                 PostToUi(() => _icon.ShowBalloonTip(10000, "TelaDois",
                     "Rode o instalador do monitor virtual de novo (como administrador) para o Windows esconder o monitor quando ele não estiver em uso.", ToolTipIcon.Info));
-            }
-        };
-        // Também uma vez por execução: sem o driver, toda abertura do vídeo avisa.
-            if (Interlocked.Exchange(ref _driverWarned, 1) == 0)
-            {
-                PostToUi(() => _icon.ShowBalloonTip(10000, "TelaDois",
-                    @"Monitor virtual não instalado: duplicando um monitor. Para estender, rode tools\vdd\instalar-vdd.ps1 como administrador.", ToolTipIcon.Info));
             }
         };
         // Os eventos chegam de threads diferentes e fora da trava (podem chegar fora de ordem): na thread da bandeja,
@@ -102,7 +101,13 @@ internal sealed class TrayContext : ApplicationContext
 
         var service = new UsbTunnelService(new UsbmuxClient(UsbmuxClient.DefaultEndpoint), LinkSessionOptions.Default, _log.Write, video.OpenAsync, _monitor);
         service.StatusChanged += status => PostToUi(() => Show(status));
-        _running = Task.Run(() => service.RunAsync(_cts.Token));
+        // O desligamento de abrir termina antes do túnel começar: senão ele desativaria o dispositivo no meio de uma
+        // sessão (iPhone já plugado e monitor que sobrou ativo: o PowerOnAsync da sessão acharia o monitor e seguiria).
+        _running = Task.Run(async () =>
+        {
+            await PowerOffOnOpenAsync();
+            await service.RunAsync(_cts.Token);
+        });
     }
 
     /// <summary>
@@ -177,27 +182,25 @@ internal sealed class TrayContext : ApplicationContext
     }
 
     /// <summary>
-    /// Desativa o dispositivo do driver que ficou ativo (queda anterior ou instalação recém-feita), sem prender a thread da
-    /// bandeja: a tarefa do Windows e a espera pelo monitor sumir levam segundos. Nunca lança; o resultado vai ao registro.
+    /// Desativa o dispositivo do driver que ficou ativo (queda anterior ou instalação recém-feita). Roda numa tarefa de
+    /// fundo (a tarefa do Windows e a espera pelo monitor sumir levam segundos, não prende a thread da bandeja) e o túnel
+    /// só começa depois dela. Nunca lança; o resultado vai ao registro.
     /// </summary>
-    private void PowerOffInBackground()
+    private async Task PowerOffOnOpenAsync()
     {
-        _ = Task.Run(async () =>
+        try
         {
-            try
-            {
-                // O próprio VirtualDisplay registra o resultado (desativou, não desativou, tarefa recusada).
-                await _virtualDisplay.PowerOffAsync(_cts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                _log.Write("ao abrir: desativar o monitor virtual foi interrompido (saindo)");
-            }
-            catch (Exception e)
-            {
-                _log.Write($"ao abrir: não deu para desativar o monitor virtual: {e.Message}");
-            }
-        });
+            // O próprio VirtualDisplay registra o resultado (desativou, não desativou, tarefa recusada).
+            await _virtualDisplay.PowerOffAsync(_cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _log.Write("ao abrir: desativar o monitor virtual foi interrompido (saindo)");
+        }
+        catch (Exception e)
+        {
+            _log.Write($"ao abrir: não deu para desativar o monitor virtual: {e.Message}");
+        }
     }
 
     /// <summary>
