@@ -177,13 +177,18 @@ try {
         $folder.RegisterTaskDefinition($task.Name, $definition, 6, 'SYSTEM', $null, 5, $sddl) | Out-Null   # 6 = criar ou atualizar
         Write-Host "Tarefa \TelaDois\$($task.Name) pronta."
     }
-    pnputil /disable-device "$instanceId" | Write-Host
-    if ($LASTEXITCODE -eq 3010) {
-        Write-Host 'Monitor virtual desativado, mas o monitor só some da lista do Windows depois de reiniciar o Windows.'
-    } elseif ($LASTEXITCODE -ne 0) {
-        throw "pnputil não conseguiu desativar o monitor virtual (código $LASTEXITCODE). Rode o instalador de novo."
+    # Já desativado (instalador rodado de novo): "pnputil /disable-device" responde 1167 nesse caso (medido em 2026-10-21).
+    if ((Get-PnpDevice -InstanceId $instanceId -ErrorAction SilentlyContinue).Problem -eq 'CM_PROB_DISABLED') {
+        Write-Host 'Monitor virtual já estava desativado: o Windows só vai mostrá-lo quando o TelaDois ligar o modo monitor.'
     } else {
-        Write-Host 'Monitor virtual desativado: o Windows só vai mostrá-lo quando o TelaDois ligar o modo monitor.'
+        pnputil /disable-device "$instanceId" | Write-Host
+        if ($LASTEXITCODE -eq 3010) {
+            Write-Host 'Monitor virtual desativado, mas o monitor só some da lista do Windows depois de reiniciar o Windows.'
+        } elseif ($LASTEXITCODE -ne 0) {
+            throw "pnputil não conseguiu desativar o monitor virtual (código $LASTEXITCODE). Rode o instalador de novo."
+        } else {
+            Write-Host 'Monitor virtual desativado: o Windows só vai mostrá-lo quando o TelaDois ligar o modo monitor.'
+        }
     }
     Write-Host 'Monitor virtual instalado e deixado desativado. O TelaDois ativa o dispositivo só enquanto o modo monitor estiver ligado. Abra (ou reabra) o TelaDois.'
     Write-Host 'Se algo falhar depois da instalação do driver, basta rodar este instalador de novo.'
