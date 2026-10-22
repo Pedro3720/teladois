@@ -166,6 +166,8 @@ O projeto tem um grafo de conhecimento em `graphify-out/` (código pela AST + sp
 - **PC de casa (AMD):** rodar de novo `tools\vdd\instalar-vdd.ps1` como administrador (correção do 1167 + modos ÷ 1,75) antes de usar a 5c/5d lá; teste da 5a/5b no AMD (`amf-download`) continua pendente.
 - **Certificado:** a última instalação no iPhone foi pelo PC do trabalho (0.5.0, `a63bed0`). Instalar pelo PC de casa pede para revogar o certificado (o usuário responde `yes` numa aba do Terminal).
 
+**Melhorias planejadas (2026-10-22, nada executado):** relógio igual ao StandBy original, kit de instalação para outro PC e versão Android, com estimativas e perguntas em aberto em `melhorias/melhorias-planejadas.pdf` (fonte: `melhorias/melhorias-planejadas.html`, gerado pelo Edge com `--headless --print-to-pdf`). Falta o usuário escolher a ordem (recomendada: relógio → fim da 5d → kit → Android).
+
 **Próximos passos**
 1. Etapa 5d: bancada do parado → aplicar a correção → revisão final → Task 6 (foto + docs).
 2. Task 9 da 5c (e o teste no AMD em casa, depois de rodar o instalador lá).

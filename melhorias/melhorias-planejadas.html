@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>TelaDois — Melhorias planejadas</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 16mm 15mm; }
+  :root { --ink:#1d1d1f; --muted:#6e6e73; --line:#d2d2d7; --accent:#2f6fd6; --soft:#f2f5fb; --warn:#fff4e5; --warnline:#f0b35b; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; color: var(--ink); font-size: 10.5pt; line-height: 1.45; margin: 0; }
+  h1 { font-size: 22pt; margin: 0 0 2mm; letter-spacing: -0.3px; }
+  h2 { font-size: 14pt; margin: 7mm 0 2.5mm; padding-bottom: 1.5mm; border-bottom: 2px solid var(--accent); break-after: avoid; }
+  h3 { font-size: 11.5pt; margin: 4.5mm 0 1.5mm; break-after: avoid; }
+  p { margin: 1.5mm 0; }
+  ul, ol { margin: 1.5mm 0 1.5mm 5mm; padding-left: 3mm; }
+  li { margin: 0.8mm 0; }
+  .sub { color: var(--muted); font-size: 10pt; margin-bottom: 5mm; }
+  table { width: 100%; border-collapse: collapse; margin: 2mm 0 3mm; font-size: 9.8pt; break-inside: avoid; }
+  th, td { border: 1px solid var(--line); padding: 1.6mm 2.2mm; text-align: left; vertical-align: top; }
+  th { background: var(--soft); font-weight: 600; }
+  td.n { white-space: nowrap; }
+  .box { background: var(--soft); border-left: 4px solid var(--accent); padding: 2.5mm 3.5mm; margin: 3mm 0; break-inside: avoid; }
+  .warn { background: var(--warn); border-left-color: var(--warnline); }
+  .tag { display: inline-block; font-size: 8.5pt; font-weight: 600; padding: 0.4mm 2mm; border-radius: 3mm; background: var(--accent); color: #fff; vertical-align: middle; }
+  .tag.gray { background: var(--muted); }
+  code { font-family: Consolas, monospace; font-size: 9.3pt; background: #f5f5f7; padding: 0 1mm; border-radius: 1mm; }
+  .photos { display: flex; gap: 4mm; margin: 3mm 0; break-inside: avoid; }
+  .photos figure { margin: 0; flex: 1; }
+  .photos .frame { height: 52mm; overflow: hidden; border-radius: 2mm; border: 1px solid var(--line); }
+  .photos img { width: 100%; height: 100%; object-fit: cover; object-position: 60% 62%; }
+  .photos figcaption { font-size: 9pt; color: var(--muted); text-align: center; margin-top: 1mm; }
+  .page-break { break-before: page; }
+  .check li { list-style: "☐  "; }
+</style>
+</head>
+<body>
+
+<h1>TelaDois — Melhorias planejadas</h1>
+<div class="sub">Gerado em 22/10/2026 (PC do trabalho) · branch <code>etapa-5b-monitor-virtual</code> · arquivo <code>melhorias/melhorias-planejadas.pdf</code></div>
+
+<div class="box">
+  <strong>Como retomar:</strong> abra o Claude no projeto e diga
+  <em>“vamos continuar as melhorias — leia <code>melhorias/melhorias-planejadas.html</code>”</em>.
+  Nada destas três melhorias foi executado ainda: o próximo passo é <strong>escolher a ordem</strong>
+  (seção 1) e responder as perguntas em aberto da melhoria escolhida.
+</div>
+
+<h2>1. Visão geral e ordem recomendada</h2>
+<table>
+  <tr><th>#</th><th>Melhoria</th><th>Estimativa</th><th>Mexe em</th></tr>
+  <tr><td>A</td><td>Relógio igual ao StandBy original do iPhone</td><td class="n">3–5 h (1 sessão)</td><td>só o app do iPhone</td></tr>
+  <tr><td>—</td><td>Terminar a Etapa 5d (atraso e engasgos) — já em andamento</td><td class="n">≈ 1 dia</td><td>app do PC</td></tr>
+  <tr><td>B</td><td>Kit de instalação para levar o TelaDois a outro PC</td><td class="n">≈ meio dia (1 sessão)</td><td>scripts + publicação do app do PC</td></tr>
+  <tr><td>C</td><td>Versão Android com as mesmas funções</td><td class="n">7–10 dias de trabalho</td><td>app Android novo + app do PC</td></tr>
+</table>
+<p><strong>Ordem recomendada:</strong> Relógio → terminar a 5d → Kit → Android.</p>
+<ul>
+  <li>O relógio é rápido, visível e independente (só iPhone).</li>
+  <li>O kit e o Android dependem do <strong>app do PC na versão final</strong>, que a 5d ainda vai mudar.</li>
+  <li>O Android é o maior: começa com o app do PC estável.</li>
+</ul>
+<p>Os tempos incluem meu trabalho + esperas reais: build do iPhone na nuvem (~15 min por rodada), instalar no celular e você testar.</p>
+
+<h2>2. Pendências que já estavam abertas</h2>
+<ul>
+  <li><strong>Etapa 5d</strong> (ordem): bancada do “parado” com o PC parado (~8 min, sair do TelaDois antes) → aplicar a correção que tirar os ~280 ms do “mouse parado que começa a mexer” + 5 ajustes menores da revisão → revisão final do branch → Task 6 (foto do cronômetro PC + iPhone, uso real, docs, 3 workflows verdes).</li>
+  <li><strong>Task 9 da Etapa 5c</strong>: teste formal do monitor virtual (some do Windows quando desligado, reiniciar e o “3” não volta, Win+Shift+[ / ], “Sair” não deixa FFmpeg aberto).</li>
+  <li><strong>PC de casa (AMD)</strong>: rodar <code>tools\vdd\instalar-vdd.ps1</code> como administrador e testar lá.</li>
+  <li><strong>Juntar ao <code>main</code></strong>: só com <code>ios-test</code>, <code>ios-build</code> e <code>windows-test</code> verdes e com a sua aprovação.</li>
+  <li>Depois: 5e (atrasar só o som do programa no iPhone, se ainda precisar), Etapa 3 (Spotify), Etapa 6 (acabamento, iniciar com o Windows, revisão de segurança).</li>
+</ul>
+
+<h2 class="page-break">3. Melhoria A — Relógio igual ao StandBy original <span class="tag">3–5 h</span></h2>
+
+<div class="photos">
+  <figure><div class="frame"><img src="img/relogio-teladois.jpg" alt="Relógio do TelaDois"></div><figcaption>Hoje (TelaDois)</figcaption></figure>
+  <figure><div class="frame"><img src="img/relogio-standby-original.jpg" alt="StandBy original do iPhone"></div><figcaption>StandBy original do iPhone (referência)</figcaption></figure>
+</div>
+
+<h3>Diferenças observadas</h3>
+<table>
+  <tr><th></th><th>TelaDois hoje</th><th>StandBy original</th></tr>
+  <tr><td>Cor dos dígitos</td><td>azul <code>#7FA9F2</code></td><td>azul-claro / ciano, mais luminoso</td></tr>
+  <tr><td>Formato dos dígitos</td><td>condensados, cantos retos, esticados 1,5×</td><td>cantos arredondados, traço mais grosso</td></tr>
+  <tr><td>Tamanho</td><td>menor</td><td>ocupa quase toda a altura da tela</td></tr>
+  <tr><td>Data e temperatura</td><td>azuis</td><td>brancas</td></tr>
+  <tr><td>Canto superior direito</td><td>anel verde da bateria</td><td>vazio</td></tr>
+  <tr><td>Canto inferior direito</td><td>“PC conectado”</td><td>⏰ próximo alarme (12:56)</td></tr>
+</table>
+
+<div class="box warn"><strong>Limitação do iOS:</strong> nenhum app pode ler os alarmes do app Relógio (a Apple não oferece essa função). O “⏰ 12:56” <strong>não pode ser copiado</strong>; no lugar dele dá para mostrar outra informação (bateria em texto, “PC conectado” ou nada).</div>
+
+<h3>Como seria feito</h3>
+<ol>
+  <li>Ajustar cor, fonte (arredondada, do próprio sistema) e tamanho em <code>Theme.swift</code> / <code>ClockPageView.swift</code> e atualizar <code>docs/design/tokens.md</code>.</li>
+  <li>Reorganizar a coluna da direita (data/temperatura brancas; decidir bateria e o lugar do alarme).</li>
+  <li>Build e prints no CI → comparar com a foto do original → instalar no iPhone para você aprovar.</li>
+</ol>
+
+<h3>Perguntas em aberto</h3>
+<ul class="check">
+  <li>Copiar tudo do original ou só a cor/fonte/tamanho dos dígitos?</li>
+  <li>Manter o anel da bateria? (Se sim, onde.)</li>
+  <li>O que mostrar no lugar do alarme: bateria em texto, “PC conectado” ou nada?</li>
+  <li>“PC conectado” continua aparecendo? (Discreto, só quando conectado?)</li>
+</ul>
+
+<h2 class="page-break">4. Melhoria B — Kit de instalação para outro PC <span class="tag">≈ meio dia</span></h2>
+
+<h3>Onde está o driver hoje</h3>
+<p>Não existe um arquivo do driver guardado no PC. O instalador <code>tools\vdd\instalar-vdd.ps1</code> baixa, a cada instalação, o pacote oficial
+<code>VirtualDisplayDriver-x86.Driver.Only.zip</code> (versão 25.7.23, 132 KB, assinado pela SignPath Foundation) do GitHub e confere o SHA-256.
+Depois de instalado, o driver fica guardado no próprio Windows. As configurações ficam em <code>C:\VirtualDisplayDriver\vdd_settings.xml</code>.</p>
+
+<h3>O que um PC novo precisa hoje (5 peças separadas)</h3>
+<table>
+  <tr><th>Peça</th><th>Como é hoje</th></tr>
+  <tr><td>Driver do monitor virtual + tarefas <code>\TelaDois\</code></td><td>script do repositório, como administrador, precisa de internet</td></tr>
+  <tr><td><code>TelaDois.exe</code></td><td>precisa do .NET 10 instalado</td></tr>
+  <tr><td>FFmpeg</td><td><code>winget install Gyan.FFmpeg</code>, à parte</td></tr>
+  <tr><td>Driver USB da Apple (Apple Mobile Device Support)</td><td>iTunes/iCloud versão web, à parte</td></tr>
+  <tr><td>Atalho na Área de Trabalho</td><td>à mão</td></tr>
+</table>
+
+<h3>Proposta recomendada: “Kit TelaDois” (pasta zipada)</h3>
+<ul>
+  <li><code>Instalar TelaDois.cmd</code>: pede administrador uma vez e faz tudo.</li>
+  <li>Driver <strong>dentro do kit</strong> (sem download; SHA-256 e assinatura conferidos).</li>
+  <li>TelaDois em <strong>arquivo único que não precisa do .NET</strong>, copiado para <code>%LOCALAPPDATA%\Programs\TelaDois</code>.</li>
+  <li>Confere FFmpeg e driver da Apple; instala pelo <code>winget</code> o que faltar.</li>
+  <li>Cria o atalho na Área de Trabalho e, se você quiser, abre junto com o Windows.</li>
+  <li><code>Desinstalar TelaDois.cmd</code> que desfaz tudo.</li>
+  <li>O GitHub monta o zip sozinho a cada versão: é só baixar e levar no pendrive ou no Google Drive.</li>
+</ul>
+<p><strong>Alternativa:</strong> instalador <code>.exe</code> com assistente (Inno Setup). Mais bonito, mas +1 dia e o Windows mostra “editor desconhecido” (sem assinatura).</p>
+<div class="box warn"><strong>Atenção no PC do trabalho:</strong> o Controle de Aplicativos do Windows pode bloquear scripts e programas sem assinatura (já bloqueou o <code>graphify.exe</code>). O kit precisa ser testado nos dois PCs.</div>
+
+<h3>Perguntas em aberto</h3>
+<ul class="check">
+  <li>Zip + <code>.cmd</code> (recomendado) ou instalador <code>.exe</code>?</li>
+  <li>Abrir o TelaDois junto com o Windows já no kit?</li>
+  <li>FFmpeg dentro do kit (~150 MB, funciona sem internet) ou instalado pelo <code>winget</code>?</li>
+</ul>
+
+<h2 class="page-break">5. Melhoria C — Versão Android <span class="tag">7–10 dias</span></h2>
+
+<h3>O que já existe</h3>
+<p>Projeto irmão em <code>C:\Pedro\Arquivos Pedro\Aplicativo Android</code> (repositório <code>Pedro3720/teladois-android</code>), <strong>pausado na Etapa 0</strong>:
+app “Olá” em Kotlin + Jetpack Compose, CI verde no GitHub, especificação própria e guia de instalação por <code>adb</code>.
+A Task 7 (instalar no celular) ficou esperando um Android com Depuração USB ligada.</p>
+
+<h3>O que se reaproveita e o que é novo</h3>
+<table>
+  <tr><th>Reaproveita</th><th>É novo</th></tr>
+  <tr><td>Quase todo o app do PC: captura, compressão, monitor virtual, atalhos, tela preta, medidores</td><td>App do celular inteiro em Kotlin</td></tr>
+  <tr><td>Protocolo PC ↔ celular (mesmas mensagens e bytes)</td><td>Cabo pelo <strong>ADB</strong> em vez do serviço da Apple (exige “Depuração USB” ligada uma vez)</td></tr>
+  <tr><td>Design (cores, layout, comportamento do Descanso)</td><td>Decodificar o vídeo H.264 no Android (<code>MediaCodec</code>)</td></tr>
+</table>
+
+<h3>Etapas e estimativas</h3>
+<table>
+  <tr><th>Etapa</th><th>Estimativa</th></tr>
+  <tr><td>Fechar a Etapa 0 + instalar no seu Android</td><td class="n">2–3 h</td></tr>
+  <tr><td>Modo Descanso (relógio, clima, bateria, tela preta após 60 s)</td><td class="n">1–2 dias</td></tr>
+  <tr><td>Túnel pelo cabo (ADB) no app do PC — que passa a atender iPhone <strong>e</strong> Android</td><td class="n">1–2 dias</td></tr>
+  <tr><td>Vídeo (H.264 no Android) + monitor estendido + tela preta</td><td class="n">2–3 dias</td></tr>
+  <tr><td>Ajuste de atraso no aparelho + revisão + docs</td><td class="n">1–2 dias</td></tr>
+</table>
+<p><strong>Recomendação:</strong> <strong>um único app no PC</strong> que reconhece os dois celulares (a especificação do Android previa um app de PC separado, o que duplicaria o trabalho das Etapas 5a–5d).
+Diferente do iPhone, o Android compila e instala direto deste PC (sem nuvem e sem renovar a cada 7 dias).</p>
+<div class="box warn"><strong>Requisito:</strong> um <strong>celular Android de verdade</strong> para testar vídeo e atraso (Android 10 ou mais novo).</div>
+
+<h3>Perguntas em aberto</h3>
+<ul class="check">
+  <li>Qual celular Android será usado nos testes (modelo / versão do Android)?</li>
+  <li>Um único app no PC para os dois celulares (recomendado) ou separado?</li>
+  <li>Mantém os extras da especificação Android (contadores de notificações, música de qualquer player) ou primeiro só o que o iPhone já tem?</li>
+</ul>
+
+<h2>6. Registro de 22/10/2026 — a Segunda Tela parou de conectar</h2>
+<ul>
+  <li>08:40 — o app do iPhone saiu da tela (provavelmente para a foto do StandBy original); às 08:41 reconectou. Às 08:44:39 o Windows informou que o <strong>iPhone saiu do cabo</strong> (o número da conexão mudou de 9 para 10, sinal de que o USB caiu e voltou); o TelaDois desligou o monitor virtual e ficou esperando, como previsto.</li>
+  <li>08:47 — o TelaDois foi fechado (“Sair”, para rodar o instalador do driver de novo) e não foi reaberto.</li>
+  <li>08:54 — reaberto pelo Windows: o iPhone conectou na hora e o monitor estendido voltou.</li>
+</ul>
+<p><strong>Lição:</strong> depois de rodar o instalador do driver, reabrir o TelaDois pelo atalho da Área de Trabalho. Com o “iniciar com o Windows” (kit ou Etapa 6) isso deixa de ser preciso.</p>
+
+</body>
+</html>
