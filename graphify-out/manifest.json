@@ -312,9 +312,9 @@
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Tray/TrayContext.cs": {
-    "mtime": 1793363025.1383364,
-    "seen": 1793369312.1979465,
-    "ast_hash": "49c4b10e30e84bba2ea1cb06035725a0",
+    "mtime": 1793369905.5779288,
+    "seen": 1793370093.6369061,
+    "ast_hash": "83e12485e750652f6d6619a17c3fa1ca",
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/Fakes/FakePhone.cs": {
@@ -420,15 +420,15 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1793369261.1426404,
-    "seen": 1793369312.1980586,
-    "ast_hash": "7801f803b9fa23f79e4bbe0243b70db1",
+    "mtime": 1793369972.16756,
+    "seen": 1793370093.637015,
+    "ast_hash": "e0c71257b1a2eee6c66af0c964f63699",
     "semantic_hash": ""
   },
   "docs/INSTALACAO.md": {
-    "mtime": 1793369268.1667438,
-    "seen": 1793369312.1980603,
-    "ast_hash": "ba4ceee2ee93b6832935932f2b0fdfbc",
+    "mtime": 1793369972.2086942,
+    "seen": 1793370093.6370165,
+    "ast_hash": "b3cdd07a2522e68871b0d3f380140d9f",
     "semantic_hash": ""
   },
   "docs/design/tokens.md": {
@@ -594,9 +594,9 @@
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Video/VideoFeedFactory.cs": {
-    "mtime": 1793361387.9073014,
-    "seen": 1793362778.5429795,
-    "ast_hash": "b649748708f53b3d8f7f68bca69459a7",
+    "mtime": 1793369905.3434086,
+    "seen": 1793370093.636892,
+    "ast_hash": "74fe5bf8c779a42cae1fb67fdee03b0a",
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Tray/TraySettings.cs": {
@@ -612,9 +612,9 @@
     "semantic_hash": ""
   },
   "windows/tests/TelaDois.Core.Tests/Video/VideoFeedFactoryTests.cs": {
-    "mtime": 1793361387.9073014,
-    "seen": 1793362778.5430453,
-    "ast_hash": "8fb49c22fe2df1b1bcbe1c9ad4450989",
+    "mtime": 1793369881.095697,
+    "seen": 1793370093.6369653,
+    "ast_hash": "e1a4f2179b2af5b391930e86c74efe8e",
     "semantic_hash": ""
   },
   "ios/TelaDois/SecondScreenView.swift": {
@@ -672,9 +672,9 @@
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Display/VirtualDisplay.cs": {
-    "mtime": 1793361387.9020305,
-    "seen": 1793362778.5429292,
-    "ast_hash": "b66430153eda65b9740534026641ea40",
+    "mtime": 1793369905.3889933,
+    "seen": 1793370093.6368394,
+    "ast_hash": "3c5960ce9515dc5f8a356313fbbd0055",
     "semantic_hash": ""
   },
   "windows/src/TelaDois.Core/Display/Win32DisplayApi.cs": {
@@ -1050,9 +1050,9 @@
     "semantic_hash": ""
   },
   ".github/workflows/windows-installer.yml": {
-    "mtime": 1793364572.465582,
-    "seen": 1793369312.1977775,
-    "ast_hash": "0140fe05c8a0386377ce6291670f2353",
+    "mtime": 1793369972.1251385,
+    "seen": 1793370093.6367202,
+    "ast_hash": "6b034ce232c5a045a766eb344383613f",
     "semantic_hash": ""
   },
   "installer/gerar-imagens.py": {
@@ -1062,9 +1062,9 @@
     "semantic_hash": ""
   },
   "installer/montar.ps1": {
-    "mtime": 1793364106.5421493,
-    "seen": 1793369312.1977844,
-    "ast_hash": "64b7a2da7cb0afdb48502140086247e8",
+    "mtime": 1793369962.6029844,
+    "seen": 1793370093.6367273,
+    "ast_hash": "c95204c736e931302ac3133124d909e7",
     "semantic_hash": ""
   },
   "tools/instalador/testar-scripts.ps1": {
@@ -1092,9 +1092,21 @@
     "semantic_hash": ""
   },
   "installer/NOTAS-DA-VERSAO.md": {
-    "mtime": 1793366691.1068704,
-    "seen": 1793369312.198076,
-    "ast_hash": "dc849ebf06c4a6bdf9350c90af9f6fc1",
+    "mtime": 1793369920.1979358,
+    "seen": 1793370093.6370325,
+    "ast_hash": "4cadcef323f83971ed335a9de9be24d8",
+    "semantic_hash": ""
+  },
+  "installer/terceiros/AVISOS-DE-TERCEIROS.txt": {
+    "mtime": 1793369942.768623,
+    "seen": 1793370093.6370344,
+    "ast_hash": "13810a843931dc4a355ba107cb72b28f",
+    "semantic_hash": ""
+  },
+  "installer/terceiros/VirtualDisplayDriver-LICENSE.txt": {
+    "mtime": 1793369929.1324458,
+    "seen": 1793370093.6370363,
+    "ast_hash": "d9d0fcb344bbe39b582b05fa41072dcd",
     "semantic_hash": ""
   },
   "prototype/package-lock.json": {
