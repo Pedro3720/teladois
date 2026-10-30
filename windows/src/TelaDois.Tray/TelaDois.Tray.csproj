@@ -12,6 +12,13 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>TelaDois.ico</ApplicationIcon>
+    <Product>TelaDois</Product>
+    <Description>TelaDois: o iPhone vira uma tela a mais do PC pelo cabo</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="TelaDois.ico" LogicalName="TelaDois.ico" />
+  </ItemGroup>
 
 </Project>

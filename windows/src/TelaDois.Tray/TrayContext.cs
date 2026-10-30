@@ -54,12 +54,12 @@ internal sealed class TrayContext : ApplicationContext
         menu.Items.Add("Sair", null, (_, _) => ExitThread());
         _icon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = AppIcon.ForTray(),
             Text = "TelaDois: iniciando",
             ContextMenuStrip = menu,
             Visible = true,
         };
-        _log.Write("TelaDois iniciado");
+        _log.Write($"TelaDois {Application.ProductVersion} iniciado");
         DetachLeftover("ao abrir");
 
         _ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();

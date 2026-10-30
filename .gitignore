@@ -16,6 +16,10 @@ windows/**/bin/
 windows/**/obj/
 *.user
 
+# Instalador (installer/montar.ps1): saída e downloads conferidos
+/installer/out/
+/installer/cache/
+
 # Node / Playwright (protótipo)
 node_modules/
 /prototype/node_modules/

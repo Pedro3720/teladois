@@ -3,5 +3,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Versão do app do PC; o CI troca pelo número da tag (installer/montar.ps1 -Version). -->
+    <VersionPrefix>0.6.0</VersionPrefix>
   </PropertyGroup>
 </Project>
