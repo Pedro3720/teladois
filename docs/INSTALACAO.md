@@ -2,7 +2,7 @@
 
 ## No PC (Windows)
 
-1. Baixe o `TelaDois-Setup-<versão>.exe` da versão mais nova em https://github.com/Pedro3720/teladois/releases e abra.
+1. Baixe o `TelaDois-Setup-<versão>.exe` da versão mais nova em https://github.com/Pedro3720/teladois/releases e abra. Enquanto a versão não estiver no `main`, ela aparece marcada como "Pre-release".
 2. **"O Windows protegeu o computador"** (SmartScreen): **Mais informações → Executar assim mesmo**. Aparece porque o instalador não tem assinatura paga. Conferir o arquivo (opcional): `Get-FileHash <arquivo>` igual ao `.sha256` da página.
 3. Aceite o pedido de administrador (é para o monitor virtual) e clique em **Instalar**. As três opções já vêm marcadas: monitor virtual, abrir com o Windows e atalho na Área de Trabalho.
 4. O instalador:
@@ -14,6 +14,7 @@
 6. **Desinstalar:** Configurações → Aplicativos → TelaDois → Desinstalar (remove também o monitor virtual).
 
 Registros: `C:\Program Files\TelaDois\logs\` (instalação) e `%LOCALAPPDATA%\TelaDois\tela-dois.log` (o app).
+
 **PC com Controle de Aplicativos** (ex.: do trabalho): o Windows pode bloquear o instalador sem assinatura ou o script do monitor virtual. Sem o monitor virtual, o TelaDois mostra no iPhone uma cópia de um monitor.
 
 ## No iPhone

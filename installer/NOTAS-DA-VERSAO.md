@@ -8,4 +8,4 @@ O instalador põe o TelaDois, o FFmpeg e o monitor virtual; se faltar o driver U
 
 Conferir o arquivo (opcional): `Get-FileHash .\TelaDois-Setup-….exe` deve dar o mesmo valor do `.sha256`.
 
-O app do iPhone continua sendo instalado pelo xtool: veja `docs/INSTALACAO.md`.
+O app do iPhone continua sendo instalado pelo xtool: veja https://github.com/Pedro3720/teladois/blob/main/docs/INSTALACAO.md.
