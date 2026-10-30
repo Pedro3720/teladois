@@ -11,7 +11,7 @@
    - confere o driver USB da Apple; se faltar, baixa o instalador do iTunes pelo winget e instala só o **Apple Mobile Device Support** (o driver, não o iTunes), depois de conferir a assinatura da Apple. Se não der, abre a página da Apple;
    - abre o TelaDois na bandeja, perto do relógio.
 5. **Atualizar:** baixe a versão nova e abra por cima; as preferências ficam.
-6. **Desinstalar:** Configurações → Aplicativos → TelaDois → Desinstalar (remove também o monitor virtual).
+6. **Desinstalar:** Configurações → Aplicativos → TelaDois → Desinstalar (remove também o monitor virtual). O Apple Mobile Device Support fica, porque outros programas da Apple usam; se quiser, tire em Aplicativos.
 
 Registros: `C:\Program Files\TelaDois\logs\` (instalação) e `%LOCALAPPDATA%\TelaDois\tela-dois.log` (o app).
 

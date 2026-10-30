@@ -15,14 +15,15 @@ AppVersion={#AppVersion}
 AppVerName=TelaDois {#AppVersion}
 AppPublisher=TelaDois
 AppPublisherURL=https://github.com/Pedro3720/teladois
-AppSupportURL=https://github.com/Pedro3720/teladois/blob/main/docs/INSTALACAO.md
+AppSupportURL=https://github.com/Pedro3720/teladois/releases
 DefaultDirName={autopf}\TelaDois
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 DisableReadyPage=yes
 PrivilegesRequired=admin
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+; O driver do monitor virtual é só x64: o Windows ARM64 é recusado já na abertura.
+ArchitecturesAllowed=x64os
+ArchitecturesInstallIn64BitMode=x64os
 ; Windows 10 2004 ou mais novo (exigido pelo Virtual Display Driver).
 MinVersion=10.0.19041
 OutputDir=out
@@ -213,6 +214,10 @@ begin
   if CurUninstallStep = usUninstall then
   begin
     StopTelaDois;
-    RunScript(ExpandConstant('{app}\driver\desinstalar-vdd.ps1'), '', ExpandConstant('{%TEMP}\TelaDois-desinstalar-vdd.log'), Code);
+    if (not RunScript(ExpandConstant('{app}\driver\desinstalar-vdd.ps1'), '', ExpandConstant('{%TEMP}\TelaDois-desinstalar-vdd.log'), Code)
+        or (Code <> 0)) and not UninstallSilent then
+      MsgBox('Não foi possível remover o monitor virtual por completo.' + #13#10 + #13#10 +
+        'Para tentar de novo, instale o TelaDois outra vez e desinstale em seguida.' + #13#10 +
+        'Detalhes: %TEMP%\TelaDois-desinstalar-vdd.log', mbInformation, MB_OK);
   end;
 end;

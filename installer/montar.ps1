@@ -74,6 +74,10 @@ $driverDir = New-Item -ItemType Directory -Force (Join-Path $Stage 'driver')
 Copy-Item (Get-Verified $Driver) $driverDir
 'instalar-vdd.ps1', 'desinstalar-vdd.ps1', 'vdd_settings.xml' | ForEach-Object { Copy-Item (Join-Path $Root "tools\vdd\$_") $driverDir }
 
+# Licença do driver (MIT exige que acompanhe as cópias) e avisos de terceiros: vão para {app}\driver e {app}.
+Copy-Item (Join-Path $PSScriptRoot 'terceiros\VirtualDisplayDriver-LICENSE.txt') $driverDir
+Copy-Item (Join-Path $PSScriptRoot 'terceiros\AVISOS-DE-TERCEIROS.txt') (Join-Path $Stage 'app')
+
 $toolsDir = New-Item -ItemType Directory -Force (Join-Path $Stage 'tools')
 Copy-Item (Join-Path $Root 'tools\instalador\verificar-apple.ps1') $toolsDir
 

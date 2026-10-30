@@ -1,0 +1,19 @@
+﻿TelaDois: avisos de software de terceiros
+==========================================
+
+O TelaDois usa os programas abaixo, cada um com a sua própria licença.
+
+Virtual Display Driver 25.7.23
+  O monitor virtual do iPhone.
+  Licença: MIT (texto em driver\VirtualDisplayDriver-LICENSE.txt, nesta instalação).
+  https://github.com/VirtualDrivers/Virtual-Display-Driver
+
+FFmpeg 9.0.1, build "essentials" de Gyan Doshi
+  Captura e comprime a tela.
+  Licença: GPL versão 3. O texto da licença, a lista de bibliotecas do build e onde
+  está o código-fonte ficam na pasta ffmpeg\ (LICENSE, BUILD-INFO.txt e LEIA-ME.txt).
+  https://www.gyan.dev/ffmpeg/builds/
+
+.NET (ambiente de execução, já dentro do TelaDois.exe)
+  Licença: MIT.
+  https://github.com/dotnet/runtime/blob/main/LICENSE.TXT

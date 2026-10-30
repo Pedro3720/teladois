@@ -50,7 +50,9 @@ jobs:
           "value=$v" >> $env:GITHUB_OUTPUT
       - name: Montar o instalador
         shell: powershell
-        run: ./installer/montar.ps1 -Version '${{ steps.version.outputs.value }}'
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: ./installer/montar.ps1 -Version $env:VERSION
       - uses: actions/upload-artifact@v7
         with:
           name: TelaDois-Setup
@@ -78,13 +80,19 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.installer.outputs.version }}
+          TAG: ${{ github.ref_name }}
         run: |
-          $v = '${{ needs.installer.outputs.version }}'
+          $v = $env:VERSION
+          # As notas trazem {{TAG}} onde o link precisa apontar para a versão publicada.
+          $notes = Join-Path $env:RUNNER_TEMP 'notas-da-versao.md'
+          $text = (Get-Content installer/NOTAS-DA-VERSAO.md -Raw -Encoding UTF8).Replace('{{TAG}}', $env:TAG)
+          [IO.File]::WriteAllText($notes, $text, (New-Object Text.UTF8Encoding $false))
           # O código 1 do merge-base só quer dizer "o commit não está no main"; não é falha.
           $PSNativeCommandUseErrorActionPreference = $false
           # Pré-lançamento enquanto o commit da tag não estiver no main.
           git merge-base --is-ancestor $env:GITHUB_SHA origin/main
           [string[]]$pre = if ($LASTEXITCODE -eq 0) { @() } else { @('--prerelease') }
           gh release create $env:GITHUB_REF_NAME "installer/out/TelaDois-Setup-$v.exe" "installer/out/TelaDois-Setup-$v.exe.sha256" `
-            --title "TelaDois $v" --notes-file installer/NOTAS-DA-VERSAO.md --verify-tag @pre
+            --title "TelaDois $v" --notes-file $notes --verify-tag @pre
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

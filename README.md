@@ -27,7 +27,7 @@ O instalador já traz tudo o que o PC precisa:
 | Driver USB da Apple | se faltar, é baixado pelo winget e só o *Apple Mobile Device Support* é instalado, depois de conferir a assinatura da Apple |
 
 - **Atualizar:** baixe a versão nova e abra por cima; as preferências ficam.
-- **Desinstalar:** Configurações → Aplicativos → TelaDois → Desinstalar (remove também o monitor virtual).
+- **Desinstalar:** Configurações → Aplicativos → TelaDois → Desinstalar (remove também o monitor virtual). O Apple Mobile Device Support fica, porque outros programas da Apple usam; se quiser, tire em Aplicativos.
 - **Conferir o arquivo (opcional):** `Get-FileHash .\TelaDois-Setup-<versão>.exe` deve dar o valor do `.sha256` da mesma página.
 - **Deu algo errado?** Os registros ficam em `C:\Program Files\TelaDois\logs\` (instalação) e `%LOCALAPPDATA%\TelaDois\tela-dois.log` (o app).
 
