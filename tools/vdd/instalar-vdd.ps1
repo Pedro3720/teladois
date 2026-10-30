@@ -29,7 +29,9 @@ $ErrorActionPreference = 'Stop'
 # Sem isto, a barra de progresso do Invoke-WebRequest deixa o download do PowerShell 5.1 muito lento.
 $ProgressPreference = 'SilentlyContinue'
 if ($LogPath) {
-    New-Item -ItemType Directory -Force (Split-Path -Parent $LogPath) | Out-Null
+    # -LogPath sem pasta (ex.: "log.txt") dá '' em Split-Path: nesse caso não há pasta a criar.
+    $logDir = Split-Path -Parent $LogPath
+    if ($logDir) { New-Item -ItemType Directory -Force $logDir | Out-Null }
     Start-Transcript -Path $LogPath -Force | Out-Null
 }
 $rebootNeeded = $false
@@ -118,8 +120,8 @@ public static class TelaDoisVdd
 '@
 
 $work = Join-Path $env:TEMP "teladois-vdd-$([guid]::NewGuid())"
-New-Item -ItemType Directory $work | Out-Null
 try {
+    New-Item -ItemType Directory $work | Out-Null
     $zip = Join-Path $work $Asset
     if ($DriverZip) {
         Write-Host "Usando o pacote do driver que veio com o instalador ($Version)."

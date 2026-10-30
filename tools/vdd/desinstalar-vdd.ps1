@@ -16,9 +16,12 @@ $ErrorActionPreference = 'Stop'
 $HardwareId = 'Root\MttVDD'
 $ConfigDir = 'C:\VirtualDisplayDriver'
 $failures = 0
+$completed = $false
 
 if ($LogPath) {
-    New-Item -ItemType Directory -Force (Split-Path -Parent $LogPath) | Out-Null
+    # -LogPath sem pasta (ex.: "log.txt") dá '' em Split-Path: nesse caso não há pasta a criar.
+    $logDir = Split-Path -Parent $LogPath
+    if ($logDir) { New-Item -ItemType Directory -Force $logDir | Out-Null }
     Start-Transcript -Path $LogPath -Force | Out-Null
 }
 
@@ -35,7 +38,16 @@ try {
         $service = New-Object -ComObject 'Schedule.Service'
         $service.Connect()
         $folder = $null
-        try { $folder = $service.GetFolder('\TelaDois') } catch { Write-Host 'Tarefas do TelaDois: já não existiam.' }
+        try { $folder = $service.GetFolder('\TelaDois') }
+        catch {
+            # Só "arquivo/caminho não encontrado" quer dizer que a pasta já não existe; qualquer outro erro é falha de verdade.
+            # O erro COM chega embrulhado (MethodInvocationException -> COMException): olha os dois níveis.
+            $codes = @($_.Exception.HResult)
+            if ($_.Exception.InnerException) { $codes += $_.Exception.InnerException.HResult }
+            if ($codes -contains -2147024894 -or $codes -contains -2147024893) {   # 0x80070002 / 0x80070003
+                Write-Host 'Tarefas do TelaDois: já não existiam.'
+            } else { throw }
+        }
         if ($folder) {
             foreach ($task in @($folder.GetTasks(1))) {
                 $folder.DeleteTask($task.Name, 0)
@@ -45,7 +57,7 @@ try {
         }
     }
     Invoke-Step 'remover o dispositivo do monitor virtual' {
-        $devices = @(Get-PnpDevice -Class Display -ErrorAction SilentlyContinue | Where-Object { $_.HardwareID -contains $HardwareId })
+        $devices = @(Get-PnpDevice -Class Display -ErrorAction Stop | Where-Object { $_.HardwareID -contains $HardwareId })
         if (-not $devices) { Write-Host 'Dispositivo do monitor virtual: já não existia.' }
         foreach ($device in $devices) {
             pnputil /remove-device "$($device.InstanceId)" | Write-Host
@@ -64,10 +76,12 @@ try {
     Invoke-Step "apagar $ConfigDir" {
         if (Test-Path $ConfigDir) { Remove-Item -Recurse -Force $ConfigDir; Write-Host "$ConfigDir apagada." }
     }
+    $completed = $true
 }
 finally {
     if ($failures) { Write-Host "$failures passo(s) não terminaram; rode este script de novo como administrador." }
+    elseif (-not $completed) { Write-Host 'O script parou antes de terminar; rode-o de novo como administrador.' }
     else { Write-Host 'Monitor virtual removido.' }
     if ($LogPath) { Stop-Transcript | Out-Null }
 }
-if ($failures) { exit 1 }
+if ($failures -or -not $completed) { exit 1 }
