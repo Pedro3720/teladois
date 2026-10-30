@@ -332,4 +332,25 @@ public class FfmpegArgumentsTests
         Assert.Equal(Path.Combine(dir.FullName, "ffmpeg.exe"), FfmpegLocator.Find($@"C:\nao-existe;{dir.FullName}"));
         Assert.Null(FfmpegLocator.Find(@"C:\nao-existe"));
     }
+
+    [Fact]
+    public void PrefersFfmpegNextToTheApp()
+    {
+        var app = Directory.CreateTempSubdirectory();
+        var bundled = Directory.CreateDirectory(Path.Combine(app.FullName, "ffmpeg"));
+        File.WriteAllText(Path.Combine(bundled.FullName, "ffmpeg.exe"), "");
+        var inPath = Directory.CreateTempSubdirectory();
+        File.WriteAllText(Path.Combine(inPath.FullName, "ffmpeg.exe"), "");
+        Assert.Equal(Path.Combine(bundled.FullName, "ffmpeg.exe"), FfmpegLocator.Find(inPath.FullName, app.FullName));
+    }
+
+    [Fact]
+    public void FallsBackToPathWithoutBundledFfmpeg()
+    {
+        var app = Directory.CreateTempSubdirectory();
+        var inPath = Directory.CreateTempSubdirectory();
+        File.WriteAllText(Path.Combine(inPath.FullName, "ffmpeg.exe"), "");
+        Assert.Equal(Path.Combine(inPath.FullName, "ffmpeg.exe"), FfmpegLocator.Find(inPath.FullName, app.FullName));
+        Assert.Null(FfmpegLocator.Find(@"C:\nao-existe", app.FullName));
+    }
 }
