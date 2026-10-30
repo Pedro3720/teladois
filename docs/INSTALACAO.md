@@ -7,8 +7,8 @@
 3. Aceite o pedido de administrador (é para o monitor virtual) e clique em **Instalar**. As três opções já vêm marcadas: monitor virtual, abrir com o Windows e atalho na Área de Trabalho.
 4. O instalador:
    - coloca o TelaDois em `C:\Program Files\TelaDois`, com o FFmpeg em `ffmpeg\` (não precisa instalar à parte);
-   - instala o monitor virtual (Virtual Display Driver 25.7.23, conferido pelo SHA-256 e pela assinatura) e as tarefas `\TelaDois\` do Agendador;
-   - confere o driver USB da Apple; se faltar, instala o iTunes pelo winget (ou abre a página da Apple);
+   - instala o monitor virtual (Virtual Display Driver 25.7.23, conferido pelo SHA-256 e pela assinatura) e as tarefas `\TelaDois\` do Agendador. Nessa hora o Windows pergunta **"Deseja instalar este software de dispositivo?"** (fornecedor **SignPath Foundation**): clique em **Instalar**;
+   - confere o driver USB da Apple; se faltar, baixa o instalador do iTunes pelo winget e instala só o **Apple Mobile Device Support** (o driver, não o iTunes), depois de conferir a assinatura da Apple. Se não der, abre a página da Apple;
    - abre o TelaDois na bandeja, perto do relógio.
 5. **Atualizar:** baixe a versão nova e abra por cima; as preferências ficam.
 6. **Desinstalar:** Configurações → Aplicativos → TelaDois → Desinstalar (remove também o monitor virtual).

@@ -36,6 +36,9 @@ SolidCompression=yes
 WizardStyle=modern dynamic windows11
 WizardImageFile=imagens\assistente-100.png,imagens\assistente-150.png,imagens\assistente-200.png
 WizardSmallImageFile=imagens\icone-100.png,imagens\icone-150.png,imagens\icone-200.png
+; No tema escuro o Inno usa as imagens "Dark"; sem estas linhas ele cai nas imagens padrão dele.
+WizardImageFileDynamicDark=imagens\assistente-100.png,imagens\assistente-150.png,imagens\assistente-200.png
+WizardSmallImageFileDynamicDark=imagens\icone-100.png,imagens\icone-150.png,imagens\icone-200.png
 ; O TelaDois é fechado no PrepareToInstall (com o FFmpeg que ele abriu).
 CloseApplications=no
 SetupLogging=yes
@@ -44,8 +47,15 @@ SetupLogging=yes
 Name: "ptbr"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
 [Messages]
+ptbr.WizardSelectTasks=Opções
+ptbr.SelectTasksDesc=Como o TelaDois fica neste PC.
 ptbr.SelectTasksLabel2=Confira as opções e clique em Instalar.
-ptbr.FinishedLabel=O TelaDois está na bandeja, perto do relógio. Conecte o iPhone pelo cabo e abra o app TelaDois nele.
+ptbr.WizardInstalling=Instalando
+ptbr.InstallingLabel=Isso leva alguns minutos.
+ptbr.FinishedHeadingLabel=O TelaDois está pronto
+ptbr.FinishedLabel=Ele fica na bandeja, perto do relógio. Conecte o iPhone pelo cabo e abra o app TelaDois nele.
+ptbr.FinishedLabelNoIcons=Ele fica na bandeja, perto do relógio. Conecte o iPhone pelo cabo e abra o app TelaDois nele.
+ptbr.ClickFinish=
 
 [Tasks]
 Name: "monitor"; Description: "Instalar o monitor virtual (o iPhone vira uma tela a mais, não uma cópia)"
@@ -148,13 +158,17 @@ var
   Code: Integer;
   ErrorCode: Integer;
 begin
-  ShowStep('Conferindo o driver USB da Apple...');
+  { O script só baixa e instala quando o serviço não existe; só então a espera é longa. }
+  if RegKeyExists(HKLM, 'SYSTEM\CurrentControlSet\Services\Apple Mobile Device Service') then
+    ShowStep('Conferindo o driver USB da Apple...')
+  else
+    ShowStep('Instalando o driver USB da Apple (pode levar alguns minutos)...');
   if not RunScript(ExpandConstant('{app}\tools\verificar-apple.ps1'), '', ExpandConstant('{app}\logs\verificar-apple.log'), Code)
      or (Code <> 0) then
   begin
     if not WizardSilent then
       ShellExecAsOriginalUser('open', AppleUrl, '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
-    AddWarning('Falta o driver USB da Apple, que vem com o iTunes. Abrimos a página de download: instale o iTunes para o PC reconhecer o iPhone.');
+    AddWarning('Não foi possível instalar o driver USB da Apple, que o PC precisa para reconhecer o iPhone. Abrimos a página de download: instale o iTunes por ela.');
   end;
 end;
 
@@ -184,6 +198,9 @@ end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
+  { Sem página "Pronto para Instalar", o botão desta página é o que instala: o texto tem de dizer isso. }
+  if CurPageID = wpSelectTasks then
+    WizardForm.NextButton.Caption := SetupMessage(msgButtonInstall);
   { Já deixa marcado "reiniciar mais tarde" na página final. }
   if (CurPageID = wpFinished) and WizardForm.NoRadio.Visible then
     WizardForm.NoRadio.Checked := True;

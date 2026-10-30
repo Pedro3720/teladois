@@ -4,7 +4,7 @@
 2. Se aparecer **"O Windows protegeu o computador"**: clique em **Mais informações → Executar assim mesmo** (o instalador não tem assinatura paga).
 3. Aceite o pedido de administrador e clique em **Instalar** — as opções já vêm marcadas.
 
-O instalador põe o TelaDois, o FFmpeg e o monitor virtual; se faltar o driver USB da Apple, instala o iTunes. Para tirar: Configurações → Aplicativos → TelaDois → Desinstalar.
+O instalador põe o TelaDois, o FFmpeg e o monitor virtual; se faltar o driver USB da Apple, instala só o driver (não o iTunes). Para tirar: Configurações → Aplicativos → TelaDois → Desinstalar.
 
 Conferir o arquivo (opcional): `Get-FileHash .\TelaDois-Setup-….exe` deve dar o mesmo valor do `.sha256`.
 
