@@ -1,0 +1,69 @@
+name: windows-installer
+on:
+  push:
+    branches: [main, "etapa-*"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installer:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: windows/global.json
+      - name: Testes do PC
+        run: dotnet test windows/TelaDois.sln -c Release
+      - name: Scripts do instalador (sintaxe e BOM, Windows PowerShell 5.1)
+        shell: powershell
+        run: ./tools/instalador/testar-scripts.ps1
+      - name: Inno Setup 6.7.3 (SHA-256 conferido)
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $exe = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+          Invoke-WebRequest https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe -OutFile $exe
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
+          if ($hash -ne '9C73C3BAE7ED48D44112A0F48E66742C00090BDB5BEF71D9D3C056C66E97B732') { throw "SHA-256 do Inno Setup diferente: $hash" }
+          Start-Process $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/ALLUSERS' -Wait
+      - name: Versão
+        id: version
+        shell: pwsh
+        run: |
+          # Tag v0.6.0 → 0.6.0; sem tag → 0.6.0-dev.<número da execução> (a base acompanha o VersionPrefix do Directory.Build.props).
+          $v = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { "0.6.0-dev.$env:GITHUB_RUN_NUMBER" }
+          "value=$v" >> $env:GITHUB_OUTPUT
+      - name: Montar o instalador
+        shell: powershell
+        run: ./installer/montar.ps1 -Version '${{ steps.version.outputs.value }}'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: TelaDois-Setup
+          path: |
+            installer/out/TelaDois-Setup-*.exe
+            installer/out/TelaDois-Setup-*.exe.sha256
+          if-no-files-found: error
+      - name: Release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = '${{ steps.version.outputs.value }}'
+          # Pré-lançamento enquanto o commit da tag não estiver no main.
+          git merge-base --is-ancestor $env:GITHUB_SHA origin/main
+          $pre = if ($LASTEXITCODE -eq 0) { @() } else { @('--prerelease') }
+          gh release create $env:GITHUB_REF_NAME "installer/out/TelaDois-Setup-$v.exe" "installer/out/TelaDois-Setup-$v.exe.sha256" `
+            --title "TelaDois $v" --notes-file installer/NOTAS-DA-VERSAO.md --verify-tag @pre
+          exit 0
