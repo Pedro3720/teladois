@@ -70,7 +70,7 @@ public sealed class VideoFeedFactory(
     {
         if (ffmpegPath is null || _probe is null)
         {
-            log("FFmpeg não encontrado: instale com 'winget install Gyan.FFmpeg'");
+            log("FFmpeg não encontrado: rode o instalador do TelaDois de novo (ou instale com 'winget install Gyan.FFmpeg')");
             FfmpegMissing?.Invoke();
             return null;
         }
@@ -102,7 +102,7 @@ public sealed class VideoFeedFactory(
             }
             else
             {
-                log(@"monitor virtual não instalado: duplicando um monitor (para estender, rode tools\vdd\instalar-vdd.ps1 como administrador)");
+                log(@"monitor virtual não instalado: duplicando um monitor (para estender, rode o instalador do TelaDois de novo, ou tools\vdd\instalar-vdd.ps1 como administrador)");
                 DriverMissing?.Invoke();
             }
         }
@@ -230,7 +230,7 @@ public sealed class VideoFeedFactory(
             return (width, height);
         }
         log($"o driver do monitor virtual não tem {width}×{height} (instalação antiga): ligando em {iphone.Item1}×{iphone.Item2} como antes; " +
-            @"para a escala 100%, rode tools\vdd\instalar-vdd.ps1 de novo como administrador");
+            @"para a escala 100%, rode o instalador do TelaDois de novo (ou tools\vdd\instalar-vdd.ps1 como administrador)");
         try
         {
             DriverModesOutdated?.Invoke();

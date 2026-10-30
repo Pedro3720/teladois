@@ -488,7 +488,7 @@ public class VideoFeedFactoryTests
         Assert.Equal(VirtualDisplay.ChooseMode(FakeVirtualMonitor.OldDriverModes, 2556, 1179), new DisplayModeInfo(2556, 1179, 60));
         Assert.Equal(VideoKind.Extend, feed!.Kind);
         Assert.Equal(1, outdated);
-        Assert.Contains(log, line => line.Contains("não tem 1460×674", StringComparison.Ordinal) && line.Contains("instalar-vdd.ps1", StringComparison.Ordinal));
+        Assert.Contains(log, line => line.Contains("não tem 1460×674", StringComparison.Ordinal) && line.Contains("instalador do TelaDois", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -60,7 +60,7 @@ public sealed class VirtualDisplay(IDisplayApi api, IDriverPipe pipe, IDeviceSwi
         }
         if (!await IsDeviceSwitchAvailableAsync(ct))
         {
-            Log(@"monitor virtual ausente e sem as tarefas do Windows que o ativam (instale com tools\vdd\instalar-vdd.ps1)");
+            Log(@"monitor virtual ausente e sem as tarefas do Windows que o ativam (rode o instalador do TelaDois de novo, ou tools\vdd\instalar-vdd.ps1)");
             return false;
         }
         var watch = System.Diagnostics.Stopwatch.StartNew();

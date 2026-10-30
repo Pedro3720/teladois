@@ -63,14 +63,16 @@ internal sealed class TrayContext : ApplicationContext
         DetachLeftover("ao abrir");
 
         _ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
-        var video = new VideoFeedFactory(FfmpegLocator.Find(), new SystemProcessRunner(), DisplayCatalog.Enumerate, () => _settings.Monitor, _log.Write, _virtualDisplay);
+        var ffmpegPath = FfmpegLocator.Find();
+        _log.Write(ffmpegPath is null ? "FFmpeg: não encontrado" : $"FFmpeg: {ffmpegPath}");
+        var video = new VideoFeedFactory(ffmpegPath, new SystemProcessRunner(), DisplayCatalog.Enumerate, () => _settings.Monitor, _log.Write, _virtualDisplay);
         video.FfmpegMissing += () =>
         {
             // Uma vez por execução: a fábrica avisa a cada conexão, o balão não precisa repetir.
             if (Interlocked.Exchange(ref _ffmpegWarned, 1) == 0)
             {
                 PostToUi(() => _icon.ShowBalloonTip(10000, "TelaDois",
-                    "Para a Segunda Tela, instale o FFmpeg (winget install Gyan.FFmpeg) e reinicie o TelaDois", ToolTipIcon.Warning));
+                    "Falta o FFmpeg: instale o TelaDois de novo (o instalador traz o FFmpeg).", ToolTipIcon.Warning));
             }
         };
         video.DriverMissing += () =>
@@ -79,7 +81,7 @@ internal sealed class TrayContext : ApplicationContext
             if (Interlocked.Exchange(ref _driverWarned, 1) == 0)
             {
                 PostToUi(() => _icon.ShowBalloonTip(10000, "TelaDois",
-                    @"Monitor virtual não instalado: duplicando um monitor. Para estender, rode tools\vdd\instalar-vdd.ps1 como administrador.", ToolTipIcon.Info));
+                    "Monitor virtual não instalado: a tela do iPhone só duplica um monitor. Para estender, rode o instalador do TelaDois de novo, com \"Instalar o monitor virtual\" marcado.", ToolTipIcon.Info));
             }
         };
         video.DeviceSwitchMissing += () =>
@@ -88,7 +90,7 @@ internal sealed class TrayContext : ApplicationContext
             if (Interlocked.Exchange(ref _switchWarned, 1) == 0)
             {
                 PostToUi(() => _icon.ShowBalloonTip(10000, "TelaDois",
-                    "Rode o instalador do monitor virtual de novo (como administrador) para o Windows esconder o monitor quando ele não estiver em uso.", ToolTipIcon.Info));
+                    "Rode o instalador do TelaDois de novo, com \"Instalar o monitor virtual\" marcado, para o Windows esconder o monitor quando ele não estiver em uso.", ToolTipIcon.Info));
             }
         };
         video.DriverModesOutdated += () =>
@@ -97,7 +99,7 @@ internal sealed class TrayContext : ApplicationContext
             if (Interlocked.Exchange(ref _modesWarned, 1) == 0)
             {
                 PostToUi(() => _icon.ShowBalloonTip(15000, "TelaDois",
-                    "Rode o instalador do monitor virtual de novo (como administrador) para o monitor do iPhone usar a resolução nova em 100%.", ToolTipIcon.Info));
+                    "Rode o instalador do TelaDois de novo, com \"Instalar o monitor virtual\" marcado, para o monitor do iPhone usar a resolução nova em 100%.", ToolTipIcon.Info));
             }
         };
         video.ScaleNotNative += percent =>
