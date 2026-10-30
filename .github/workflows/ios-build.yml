@@ -6,6 +6,8 @@ on:
       - "ios/**"
       - ".github/workflows/ios-build.yml"
       - ".github/scripts/**"
+    # Cada versão (tag v*) ganha o .ipa do mesmo commit do instalador do PC (o GitHub ignora "paths" em tags).
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:

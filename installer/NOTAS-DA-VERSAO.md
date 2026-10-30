@@ -13,4 +13,4 @@ Conferir o arquivo (opcional): `Get-FileHash .\TelaDois-Setup-….exe` deve dar 
 
 O app do iPhone continua sendo instalado pelo xtool: veja https://github.com/Pedro3720/teladois/blob/{{TAG}}/docs/INSTALACAO.md#no-iphone.
 
-O app do iPhone tem que ser da **mesma versão** do instalador do PC: use o `ios-build` gerado pelo mesmo commit (a mesma tag, `{{TAG}}`).
+O app do iPhone tem que ser da **mesma versão** do instalador do PC: use o artefato `TelaDois-ipa` da execução do `ios-build` da tag `{{TAG}}` (aba Actions; é preciso estar logado no GitHub, e o artefato expira em 90 dias).
