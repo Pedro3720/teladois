@@ -162,7 +162,7 @@ begin
   if RegKeyExists(HKLM, 'SYSTEM\CurrentControlSet\Services\Apple Mobile Device Service') then
     ShowStep('Conferindo o driver USB da Apple...')
   else
-    ShowStep('Instalando o driver USB da Apple (pode levar alguns minutos)...');
+    ShowStep('Instalando o driver USB da Apple...');
   if not RunScript(ExpandConstant('{app}\tools\verificar-apple.ps1'), '', ExpandConstant('{app}\logs\verificar-apple.log'), Code)
      or (Code <> 0) then
   begin
