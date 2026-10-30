@@ -44,7 +44,7 @@ SetupLogging=yes
 Name: "ptbr"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
 [Messages]
-ptbr.SelectTasksLabel2=Tudo já vem marcado. Clique em Instalar.
+ptbr.SelectTasksLabel2=Confira as opções e clique em Instalar.
 ptbr.FinishedLabel=O TelaDois está na bandeja, perto do relógio. Conecte o iPhone pelo cabo e abra o app TelaDois nele.
 
 [Tasks]
@@ -94,9 +94,17 @@ end;
 procedure StopTelaDois;
 var
   Code: Integer;
+  FfmpegDir: String;
 begin
   { /T leva junto o ffmpeg.exe que o TelaDois abriu. Sem TelaDois aberto o taskkill só devolve 128. }
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM TelaDois.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  { Se o TelaDois caiu, o ffmpeg.exe da pasta do app pode ter ficado órfão e travaria a troca dos arquivos. }
+  FfmpegDir := ExpandConstant('{app}\ffmpeg\');
+  StringChangeEx(FfmpegDir, '''', '''''', True);
+  Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -NonInteractive -Command "Get-Process ffmpeg -ErrorAction SilentlyContinue | ' +
+    'Where-Object { $_.Path -and $_.Path.StartsWith(''' + FfmpegDir + ''', ''OrdinalIgnoreCase'') } | Stop-Process -Force"',
+    '', SW_HIDE, ewWaitUntilTerminated, Code);
 end;
 
 procedure AddWarning(const Text: String);
@@ -144,7 +152,8 @@ begin
   if not RunScript(ExpandConstant('{app}\tools\verificar-apple.ps1'), '', ExpandConstant('{app}\logs\verificar-apple.log'), Code)
      or (Code <> 0) then
   begin
-    ShellExecAsOriginalUser('open', AppleUrl, '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
+    if not WizardSilent then
+      ShellExecAsOriginalUser('open', AppleUrl, '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
     AddWarning('Falta o driver USB da Apple, que vem com o iTunes. Abrimos a página de download: instale o iTunes para o PC reconhecer o iPhone.');
   end;
 end;
@@ -158,14 +167,26 @@ begin
     if not WizardIsTaskSelected('autostart') then
       RegDeleteValue(HKLM, RunKey, 'TelaDois');
     CheckApple;
+    if Warnings <> '' then
+      Log('Avisos: ' + Warnings);
     if (Warnings <> '') and not WizardSilent then
       MsgBox(Warnings, mbInformation, MB_OK);
+    if NeedsReboot and WizardSilent then
+      Log('Reinício pendente: o monitor virtual só funciona depois de reiniciar o Windows (não reiniciamos sozinhos).');
   end;
 end;
 
+{ Nunca reinicia sozinho: no modo silencioso só registra no log; no interativo a página final pergunta. }
 function NeedRestart: Boolean;
 begin
-  Result := NeedsReboot;
+  Result := NeedsReboot and not WizardSilent;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  { Já deixa marcado "reiniciar mais tarde" na página final. }
+  if (CurPageID = wpFinished) and WizardForm.NoRadio.Visible then
+    WizardForm.NoRadio.Checked := True;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

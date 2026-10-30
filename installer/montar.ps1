@@ -77,24 +77,29 @@ Copy-Item (Get-Verified $Driver) $driverDir
 $toolsDir = New-Item -ItemType Directory -Force (Join-Path $Stage 'tools')
 Copy-Item (Join-Path $Root 'tools\instalador\verificar-apple.ps1') $toolsDir
 
-# Do FFmpeg vão só o ffmpeg.exe e a licença; o LEIA-ME diz de onde veio e onde está o código-fonte (GPL).
+# Do FFmpeg vão só o ffmpeg.exe, a licença e a lista de bibliotecas do build; o LEIA-ME diz de onde veio e onde está o código-fonte (GPL).
 $ffmpegDir = New-Item -ItemType Directory -Force (Join-Path $Stage 'ffmpeg')
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [IO.Compression.ZipFile]::OpenRead((Get-Verified $Ffmpeg))
 try {
-    foreach ($name in 'bin/ffmpeg.exe', 'LICENSE') {
+    # README.txt do pacote lista as bibliotecas embutidas e a configuração do build (exigência da GPL); vai como BUILD-INFO.txt.
+    foreach ($item in @(@('bin/ffmpeg.exe', 'ffmpeg.exe'), @('LICENSE', 'LICENSE'), @('README.txt', 'BUILD-INFO.txt'))) {
+        $name = $item[0]
         $entry = $zip.Entries | Where-Object { $_.FullName -like "*/$name" } | Select-Object -First 1
         if (-not $entry) { throw "$name não está no zip do FFmpeg." }
-        [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $ffmpegDir (Split-Path $name -Leaf)), $true)
+        [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $ffmpegDir $item[1]), $true)
     }
 }
 finally {
     $zip.Dispose()
 }
 $readme = @"
-FFmpeg 9.0.1 (build "essentials" de https://www.gyan.dev/ffmpeg/builds/), usado pelo TelaDois para capturar e
-comprimir a tela. Licença: GPL versão 3 (arquivo LICENSE nesta pasta).
-Código-fonte exato desta versão: https://github.com/FFmpeg/FFmpeg/tree/n9.0.1
+FFmpeg 9.0.1, build "essentials" de Gyan Doshi, usado pelo TelaDois para capturar e comprimir a tela.
+Licença: GPL versão 3 (arquivo LICENSE nesta pasta).
+As bibliotecas incluídas neste build e a configuração usada para compilá-lo estão listadas no arquivo
+BUILD-INFO.txt, nesta pasta.
+Código-fonte do FFmpeg desta versão: https://github.com/FFmpeg/FFmpeg/tree/n9.0.1
+Página do build e código-fonte das bibliotecas incluídas: https://www.gyan.dev/ffmpeg/builds/
 Pacote original: $($Ffmpeg.Url)
 "@
 [IO.File]::WriteAllText((Join-Path $ffmpegDir 'LEIA-ME.txt'), $readme, (New-Object Text.UTF8Encoding $true))
