@@ -4,6 +4,9 @@
 .DESCRIPTION
   Rode uma vez por PC, num PowerShell aberto como administrador:
     powershell -ExecutionPolicy Bypass -File tools\vdd\instalar-vdd.ps1
+  O instalador do TelaDois roda com -DriverZip (o pacote que vem dentro dele, sem baixar nada; SHA-256 e assinatura
+  conferidos do mesmo jeito) e -LogPath (registro em arquivo). Sai com 0 (pronto), 3010 (pronto, falta reiniciar o
+  Windows) ou 1 (falhou; o motivo fica na tela e no registro).
   Baixa só o pacote do driver (versão e SHA-256 fixos), confere a assinatura, grava
   C:\VirtualDisplayDriver\vdd_settings.xml e cria o dispositivo Root\MttVDD.
   O pacote 25.7.23 é assinado pela SignPath Foundation: o Windows pode perguntar se confia
@@ -16,9 +19,21 @@
   basta rodar o instalador de novo.
 #>
 #Requires -RunAsAdministrator
+param(
+    # Zip do driver já baixado (o instalador do TelaDois traz um): instala sem internet.
+    [string]$DriverZip,
+    # Arquivo onde guardar tudo o que este script mostrar.
+    [string]$LogPath
+)
 $ErrorActionPreference = 'Stop'
 # Sem isto, a barra de progresso do Invoke-WebRequest deixa o download do PowerShell 5.1 muito lento.
 $ProgressPreference = 'SilentlyContinue'
+if ($LogPath) {
+    New-Item -ItemType Directory -Force (Split-Path -Parent $LogPath) | Out-Null
+    Start-Transcript -Path $LogPath -Force | Out-Null
+}
+$rebootNeeded = $false
+$failed = $false
 
 $Version = '25.7.23'
 $Asset = 'VirtualDisplayDriver-x86.Driver.Only.zip'
@@ -106,8 +121,13 @@ $work = Join-Path $env:TEMP "teladois-vdd-$([guid]::NewGuid())"
 New-Item -ItemType Directory $work | Out-Null
 try {
     $zip = Join-Path $work $Asset
-    Write-Host "Baixando $Asset ($Version)..."
-    Invoke-WebRequest -Uri $Url -OutFile $zip -UseBasicParsing
+    if ($DriverZip) {
+        Write-Host "Usando o pacote do driver que veio com o instalador ($Version)."
+        Copy-Item -LiteralPath $DriverZip -Destination $zip
+    } else {
+        Write-Host "Baixando $Asset ($Version)..."
+        Invoke-WebRequest -Uri $Url -OutFile $zip -UseBasicParsing
+    }
     $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
     if ($hash -ne $Sha256) { throw "SHA-256 diferente do esperado ($hash): arquivo não confiável, nada foi instalado." }
 
@@ -133,10 +153,14 @@ try {
         pnputil /add-driver $inf.FullName /install | Write-Host
         # 259 (ERROR_NO_MORE_ITEMS) = o driver já estava instalado e atualizado: nada a fazer, segue.
         if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010 -and $LASTEXITCODE -ne 259) { throw "pnputil falhou (código $LASTEXITCODE)." }
+        if ($LASTEXITCODE -eq 3010) { $rebootNeeded = $true }
     } else {
         if ($languageMode -ne 'FullLanguage') { throw $restrictedMessage }
         Add-Type -TypeDefinition $DeviceCode
-        if ([TelaDoisVdd]::Install($HardwareId, $inf.FullName)) { Write-Host 'O Windows pediu reinício para terminar a instalação.' }
+        if ([TelaDoisVdd]::Install($HardwareId, $inf.FullName)) {
+            Write-Host 'O Windows pediu reinício para terminar a instalação.'
+            $rebootNeeded = $true
+        }
     }
     # O Windows só deixa de listar o monitor com o dispositivo desativado (precisa de administrador).
     # Duas tarefas sob demanda, como SYSTEM, que qualquer usuário do PC pode disparar: o TelaDois liga/desliga sem senha.
@@ -183,6 +207,7 @@ try {
     } else {
         pnputil /disable-device "$instanceId" | Write-Host
         if ($LASTEXITCODE -eq 3010) {
+            $rebootNeeded = $true
             Write-Host 'Monitor virtual desativado, mas o monitor só some da lista do Windows depois de reiniciar o Windows.'
         } elseif ($LASTEXITCODE -ne 0) {
             throw "pnputil não conseguiu desativar o monitor virtual (código $LASTEXITCODE). Rode o instalador de novo."
@@ -193,6 +218,13 @@ try {
     Write-Host 'Monitor virtual instalado e deixado desativado. O TelaDois ativa o dispositivo só enquanto o modo monitor estiver ligado. Abra (ou reabra) o TelaDois.'
     Write-Host 'Se algo falhar depois da instalação do driver, basta rodar este instalador de novo.'
 }
-finally {
-    Remove-Item -Recurse -Force $work
+catch {
+    Write-Host "ERRO: $($_.Exception.Message)"
+    $failed = $true
 }
+finally {
+    Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
+    if ($LogPath) { Stop-Transcript | Out-Null }
+}
+if ($failed) { exit 1 }
+if ($rebootNeeded) { exit 3010 }
